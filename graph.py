@@ -26,6 +26,6 @@ def plot_files_grid(file_list, rows):
     plt.tight_layout()
     plt.show()
 
-files_to_plot = ['run2.csv', 'run3.csv'] 
+files_to_plot = ['./data/run2.csv', './data/run3.csv'] 
 
 plot_files_grid(files_to_plot, rows=20000)

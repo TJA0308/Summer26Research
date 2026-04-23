@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python scalogram.py --input_dir ./data --output_dir ./scalograms_new --single run1.csv --labels)",
+      "Bash(python scalogram.py --input_dir ./data --output_dir ./scalograms_new --labels)",
+      "Bash(python scalogram.py --input_dir ./data --output_dir ./scalograms_windowed --single run1.csv --window_sec 2.0 --hop_sec 1.0 --labels)",
+      "Bash(python scalogram.py --input_dir ./data --output_dir ./scalograms_clean --labels)",
+      "Bash(python -c ' *)",
+      "Bash(pip install *)",
+      "Bash(python -c \"import torch; print\\('torch', torch.__version__\\)\")",
+      "Bash(python -c \"import tensorflow; print\\('tf', tensorflow.__version__\\)\")",
+      "Bash(python -c \"import sklearn; print\\('sklearn', sklearn.__version__\\)\")",
+      "Bash(python scalogram.py --input_dir ./data --output_dir ./scalograms_cnn)",
+      "Bash(python cnn_train.py --img_dir ./scalograms_cnn --epochs 20)"
+    ]
+  }
+}
