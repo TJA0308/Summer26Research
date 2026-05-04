@@ -11,7 +11,24 @@
       "Bash(python -c \"import tensorflow; print\\('tf', tensorflow.__version__\\)\")",
       "Bash(python -c \"import sklearn; print\\('sklearn', sklearn.__version__\\)\")",
       "Bash(python scalogram.py --input_dir ./data --output_dir ./scalograms_cnn)",
-      "Bash(python cnn_train.py --img_dir ./scalograms_cnn --epochs 20)"
+      "Bash(python cnn_train.py --img_dir ./scalograms_cnn --epochs 20)",
+      "Bash(python scalogram.py --input_dir ./data --output_dir ./scalograms)",
+      "Bash(python cnn_train.py --img_dir ./scalograms --epochs 30)",
+      "Bash(python predict.py --csv data/run7.csv)",
+      "Bash(python cnn_train.py --img_dir ./scalograms --epochs 5)",
+      "Bash(python cnn_train.py --img_dir ./scalograms --lr 1e-4 --epochs 50 --augment strong)",
+      "Bash(python cnn_train.py --img_dir ./scalograms --freeze --lr 1e-3 --epochs 50 --augment light)",
+      "Bash(python cnn_train.py --img_dir ./scalograms --lr 1e-3 --epochs 30)",
+      "Bash(python scalogram.py --input_dir ./data --output_dir ./scalograms_2w --n_windows 2)",
+      "Bash(dir scalograms_2w /b)",
+      "Bash(python cnn_train.py --img_dir ./scalograms_2w --lr 1e-3 --epochs 30)",
+      "Bash(python cnn_train.py --img_dir ./scalograms_2w --target feed --epochs 40 --lr 5e-4 --weight_decay 1e-3 --augment strong --scheduler cosine)",
+      "Bash(python cnn_train.py --img_dir ./scalograms_2w --target feed --epochs 60 --lr 1e-3 --weight_decay 1e-2 --augment strong --scheduler cosine --freeze)",
+      "Bash(python cnn_train.py --img_dir ./scalograms_2w --target speed --epochs 60 --lr 1e-3 --weight_decay 1e-2 --augment strong --scheduler cosine --freeze)",
+      "Bash(python freq_classify.py --data_dir ./data --predict data/run30.csv)",
+      "Bash(python cnn_train.py --img_dir ./scalograms_2w --target feed --epochs 50 --lr 1e-4 --weight_decay 5e-3 --augment light --scheduler cosine)",
+      "Bash(python freq_classify.py --target doc --data_dir ./data)",
+      "Bash(python cnn_train.py --img_dir ./scalograms_2w --target doc --epochs 40 --lr 1e-3 --weight_decay 1e-3 --augment light --scheduler cosine)"
     ]
   }
 }
