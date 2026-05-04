@@ -28,7 +28,11 @@
       "Bash(python freq_classify.py --data_dir ./data --predict data/run30.csv)",
       "Bash(python cnn_train.py --img_dir ./scalograms_2w --target feed --epochs 50 --lr 1e-4 --weight_decay 5e-3 --augment light --scheduler cosine)",
       "Bash(python freq_classify.py --target doc --data_dir ./data)",
-      "Bash(python cnn_train.py --img_dir ./scalograms_2w --target doc --epochs 40 --lr 1e-3 --weight_decay 1e-3 --augment light --scheduler cosine)"
+      "Bash(python cnn_train.py --img_dir ./scalograms_2w --target doc --epochs 40 --lr 1e-3 --weight_decay 1e-3 --augment light --scheduler cosine)",
+      "Bash(python cnn_train.py --img_dir ./scalograms --target feed)",
+      "Bash(python fft_model/freq_classify.py --target speed --data_dir ./data)",
+      "Bash(python fft_model/freq_classify.py --target feed --data_dir ./data)",
+      "Bash(python fft_model/freq_classify.py --target doc --data_dir ./data)"
     ]
   }
 }

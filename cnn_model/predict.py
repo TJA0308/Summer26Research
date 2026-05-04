@@ -17,7 +17,7 @@ from scalogram import compute_powers, build_rgb_image
 from scalogram import FS, DOWNSAMPLE, F_MIN, F_MAX, N_FREQS, SIGMA, IMG_SIZE, CHANNELS
 
 SPEED_NAMES = {0: "1500 rpm", 1: "2000 rpm", 2: "3000 rpm", 3: "4000 rpm", 4: "5000 rpm"}
-FEED_NAMES  = {0: "low feed", 1: "medium feed", 2: "high feed"}
+FEED_NAMES  = {0: "3 mm/rev", 1: "4 mm/rev", 2: "5 mm/rev", 3: "6 mm/rev", 4: "7 mm/rev", 5: "8 mm/rev"}
 DOC_NAMES   = {0: "0.015 mm", 1: "0.03 mm", 2: "0.06 mm"}
 
 
@@ -65,7 +65,7 @@ def main():
 
     if args.target == "feed":
         class_names = FEED_NAMES
-        num_classes = 3
+        num_classes = 6
         model_path  = args.model or "best_model_feed.pt"
         label       = "feed rate"
     elif args.target == "doc":

@@ -68,6 +68,28 @@ DOC_LABELS = {
 DOC_NAMES   = {0: "0.015 mm", 1: "0.03 mm", 2: "0.06 mm"}
 N_DOC_BANDS = 30  # log-spaced frequency bands from 20-4000 Hz
 
+# ── Feed rate labels ──────────────────────────────────────────────────────
+# Actual feed values in mm/rev: 0=3, 1=4, 2=5, 3=6, 4=7, 5=8
+FEED_LABELS = {
+    "run1":  2,  "run2":  3,  "run3":  4,   # DOC=0.015, 4000rpm, feed=5,6,7
+    "run4":  3,  "run5":  4,  "run6":  5,   # DOC=0.015, 5000rpm, feed=6,7,8
+    "run7":  0,  "run8":  1,  "run9":  2,   # DOC=0.030, 1500rpm, feed=3,4,5
+    "run10": 0,  "run11": 1,  "run12": 2,   # DOC=0.030, 2000rpm, feed=3,4,5
+    "run13": 1,  "run14": 2,  "run15": 3,   # DOC=0.030, 3000rpm, feed=4,5,6
+    "run16": 2,  "run17": 3,  "run18": 4,   # DOC=0.030, 4000rpm, feed=5,6,7
+    "run19": 3,  "run20": 4,  "run21": 5,   # DOC=0.030, 5000rpm, feed=6,7,8
+    "run22": 0,  "run23": 1,  "run24": 2,   # DOC=0.060, 1500rpm, feed=3,4,5
+    "run25": 0,  "run26": 1,  "run27": 2,   # DOC=0.060, 2000rpm, feed=3,4,5
+    "run28": 1,  "run29": 2,  "run30": 3,   # DOC=0.060, 3000rpm, feed=4,5,6
+    "run31": 2,  "run32": 3,  "run33": 4,   # DOC=0.060, 4000rpm, feed=5,6,7
+    "run34": 3,  "run35": 4,  "run36": 5,   # DOC=0.060, 5000rpm, feed=6,7,8
+    "run37": 0,  "run38": 1,  "run39": 2,   # DOC=0.015, 1500rpm, feed=3,4,5
+    "run40": 0,  "run41": 1,  "run42": 2,   # DOC=0.015, 2000rpm, feed=3,4,5
+    "run43": 1,  "run44": 2,  "run45": 3,   # DOC=0.015, 3000rpm, feed=4,5,6
+}
+FEED_NAMES  = {0: "3 mm/rev", 1: "4 mm/rev", 2: "5 mm/rev", 3: "6 mm/rev", 4: "7 mm/rev", 5: "8 mm/rev"}
+N_FEED_BANDS = 50  # more bands than DOC to resolve fine amplitude differences
+
 
 def extract_speed_features(csv_path):
     """Power at spindle harmonic frequencies — ideal for speed classification."""
@@ -95,6 +117,23 @@ def extract_doc_features(csv_path):
     N         = len(df)
     freq_axis = np.fft.rfftfreq(N, d=1.0 / FS)
     band_edges = np.geomspace(20.0, 4000.0, N_DOC_BANDS + 1)
+    features  = []
+    for ch in CHANNELS:
+        sig  = df[ch].values.astype(np.float64)
+        sig -= sig.mean()
+        psd  = np.abs(np.fft.rfft(sig)) ** 2
+        for lo_f, hi_f in zip(band_edges[:-1], band_edges[1:]):
+            mask = (freq_axis >= lo_f) & (freq_axis < hi_f)
+            features.append(np.log1p(psd[mask].sum()))
+    return np.array(features, dtype=np.float32)
+
+
+def extract_feed_features(csv_path):
+    """Log-power in fine-grained broadband bands — feed rate shifts force amplitude across spectrum."""
+    df        = pd.read_csv(csv_path)
+    N         = len(df)
+    freq_axis = np.fft.rfftfreq(N, d=1.0 / FS)
+    band_edges = np.geomspace(20.0, 4000.0, N_FEED_BANDS + 1)
     features  = []
     for ch in CHANNELS:
         sig  = df[ch].values.astype(np.float64)
@@ -160,20 +199,24 @@ def predict_one(csv_path, clf, class_names, feature_fn):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--target",   default="speed", choices=["speed", "doc"],
-                        help="Prediction target: spindle speed or depth of cut")
+    parser.add_argument("--target",   default="speed", choices=["speed", "doc", "feed"],
+                        help="Prediction target: spindle speed, depth of cut, or feed rate")
     parser.add_argument("--data_dir", default="./data", help="Folder of run CSVs")
     parser.add_argument("--predict",  default=None,    help="CSV to predict after training")
     args = parser.parse_args()
 
     if args.target == "doc":
-        label_map  = DOC_LABELS
+        label_map   = DOC_LABELS
         class_names = DOC_NAMES
-        feature_fn = extract_doc_features
+        feature_fn  = extract_doc_features
+    elif args.target == "feed":
+        label_map   = FEED_LABELS
+        class_names = FEED_NAMES
+        feature_fn  = extract_feed_features
     else:
-        label_map  = SPEED_LABELS
+        label_map   = SPEED_LABELS
         class_names = SPEED_NAMES
-        feature_fn = extract_speed_features
+        feature_fn  = extract_speed_features
 
     print(f"Target: {args.target}  |  Extracting features ...")
     runs, X, y = load_dataset(args.data_dir, label_map, feature_fn)

@@ -33,30 +33,33 @@ SPEED_NAMES = {0: "1500 rpm", 1: "2000 rpm", 2: "3000 rpm", 3: "4000 rpm", 4: "5
 SPEED_TEST_RUNS = {"run24", "run27", "run30", "run33", "run36"}  # 1 per class, DOC=0.060
 
 # ── Feed rate prediction ──────────────────────────────────────────────────
-# Within each (speed, DOC) group of 3 runs: 0=low, 1=medium, 2=high feed
+# Actual feed values in mm/rev: 0=3, 1=4, 2=5, 3=6, 4=7, 5=8
 FEED_LABELS = {
-    "run1": 0,  "run2": 1,  "run3": 2,   # 4000/0.015  feeds 5,6,7
-    "run4": 0,  "run5": 1,  "run6": 2,   # 5000/0.015  feeds 6,7,8
-    "run7": 0,  "run8": 1,  "run9": 2,   # 1500/0.030  feeds 3,4,5
-    "run10": 0, "run11": 1, "run12": 2,  # 2000/0.030  feeds 3,4,5
-    "run13": 0, "run14": 1, "run15": 2,  # 3000/0.030  feeds 4,5,6
-    "run16": 0, "run17": 1, "run18": 2,  # 4000/0.030  feeds 5,6,7
-    "run19": 0, "run20": 1, "run21": 2,  # 5000/0.030  feeds 6,7,8
-    "run22": 0, "run23": 1, "run24": 2,  # 1500/0.060  feeds 3,4,5
-    "run25": 0, "run26": 1, "run27": 2,  # 2000/0.060  feeds 3,4,5
-    "run28": 0, "run29": 1, "run30": 2,  # 3000/0.060  feeds 4,5,6
-    "run31": 0, "run32": 1, "run33": 2,  # 4000/0.060  feeds 5,6,7
-    "run34": 0, "run35": 1, "run36": 2,  # 5000/0.060  feeds 6,7,8
-    "run37": 0, "run38": 1, "run39": 2,  # 1500/0.015  feeds 3,4,5
-    "run40": 0, "run41": 1, "run42": 2,  # 2000/0.015  feeds 3,4,5
-    "run43": 0, "run44": 1, "run45": 2,  # 3000/0.015  feeds 4,5,6
+    "run1":  2,  "run2":  3,  "run3":  4,   # DOC=0.015, 4000rpm, feed=5,6,7
+    "run4":  3,  "run5":  4,  "run6":  5,   # DOC=0.015, 5000rpm, feed=6,7,8
+    "run7":  0,  "run8":  1,  "run9":  2,   # DOC=0.030, 1500rpm, feed=3,4,5
+    "run10": 0,  "run11": 1,  "run12": 2,   # DOC=0.030, 2000rpm, feed=3,4,5
+    "run13": 1,  "run14": 2,  "run15": 3,   # DOC=0.030, 3000rpm, feed=4,5,6
+    "run16": 2,  "run17": 3,  "run18": 4,   # DOC=0.030, 4000rpm, feed=5,6,7
+    "run19": 3,  "run20": 4,  "run21": 5,   # DOC=0.030, 5000rpm, feed=6,7,8
+    "run22": 0,  "run23": 1,  "run24": 2,   # DOC=0.060, 1500rpm, feed=3,4,5
+    "run25": 0,  "run26": 1,  "run27": 2,   # DOC=0.060, 2000rpm, feed=3,4,5
+    "run28": 1,  "run29": 2,  "run30": 3,   # DOC=0.060, 3000rpm, feed=4,5,6
+    "run31": 2,  "run32": 3,  "run33": 4,   # DOC=0.060, 4000rpm, feed=5,6,7
+    "run34": 3,  "run35": 4,  "run36": 5,   # DOC=0.060, 5000rpm, feed=6,7,8
+    "run37": 0,  "run38": 1,  "run39": 2,   # DOC=0.015, 1500rpm, feed=3,4,5
+    "run40": 0,  "run41": 1,  "run42": 2,   # DOC=0.015, 2000rpm, feed=3,4,5
+    "run43": 1,  "run44": 2,  "run45": 3,   # DOC=0.015, 3000rpm, feed=4,5,6
 }
-FEED_NAMES = {0: "low feed", 1: "medium feed", 2: "high feed"}
-# 3 test per class from diverse speed/DOC combos: 9 test, 36 train
+FEED_NAMES = {0: "3 mm/rev", 1: "4 mm/rev", 2: "5 mm/rev", 3: "6 mm/rev", 4: "7 mm/rev", 5: "8 mm/rev"}
+# 1 test run per class, spread across diverse DOC/speed conditions: 6 test, 39 train
 FEED_TEST_RUNS = {
-    "run1",  "run22", "run43",   # class 0 (low):    4000/0.015, 1500/0.060, 3000/0.015
-    "run2",  "run23", "run44",   # class 1 (medium): 4000/0.015, 1500/0.060, 3000/0.015
-    "run3",  "run24", "run45",   # class 2 (high):   4000/0.015, 1500/0.060, 3000/0.015
+    "run25",  # class 0 (3 mm/rev): DOC=0.060, 2000rpm
+    "run13",  # class 1 (4 mm/rev): DOC=0.030, 3000rpm
+    "run31",  # class 2 (5 mm/rev): DOC=0.060, 4000rpm
+    "run17",  # class 3 (6 mm/rev): DOC=0.030, 4000rpm
+    "run5",   # class 4 (7 mm/rev): DOC=0.015, 5000rpm
+    "run36",  # class 5 (8 mm/rev): DOC=0.060, 5000rpm
 }
 
 # ── Depth-of-cut prediction ───────────────────────────────────────────────
@@ -257,7 +260,7 @@ def main():
         label_map   = FEED_LABELS
         class_names = FEED_NAMES
         test_runs   = FEED_TEST_RUNS
-        num_classes = 3
+        num_classes = 6
         if args.save == "best_model.pt":
             args.save = "best_model_feed.pt"
     elif args.target == "doc":
