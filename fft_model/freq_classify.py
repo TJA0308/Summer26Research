@@ -1,15 +1,23 @@
 """
-FFT + SVM classifier for spindle speed or depth of cut (DOC).
+FFT + SVM classifier for spindle speed, depth of cut (DOC), or feed rate.
 
 Speed: samples power at spindle fundamental frequencies + harmonics.
-DOC:   uses log-power in broadband frequency bands (DOC changes overall amplitude).
+DOC:   uses log-power in broadband frequency bands.
+Feed:  two-stage approach:
+         Stage 1 — predict speed (near-perfect, ~98%)
+         Stage 2 — within the predicted speed group, classify among the 3
+                   feed values present using normalized spectral features
+                   (band power / total power), which removes DOC's uniform
+                   amplitude confound and reduces the problem from 6 classes
+                   to 3 classes.
 
 Leave-one-run-out CV gives a fair out-of-sample result for every run.
 
 Usage:
-    python freq_classify.py --target speed --data_dir ./data
-    python freq_classify.py --target doc   --data_dir ./data
-    python freq_classify.py --target speed --data_dir ./data --predict data/run1.csv
+    python fft_model/freq_classify.py --target speed --data_dir ./data
+    python fft_model/freq_classify.py --target doc   --data_dir ./data
+    python fft_model/freq_classify.py --target feed  --data_dir ./data
+    python fft_model/freq_classify.py --target speed --data_dir ./data --predict data/run1.csv
 """
 
 import argparse
@@ -66,7 +74,7 @@ DOC_LABELS = {
     "run43": 0, "run44": 0, "run45": 0,
 }
 DOC_NAMES   = {0: "0.015 mm", 1: "0.03 mm", 2: "0.06 mm"}
-N_DOC_BANDS = 30  # log-spaced frequency bands from 20-4000 Hz
+N_DOC_BANDS = 30
 
 # ── Feed rate labels ──────────────────────────────────────────────────────
 # Actual feed values in mm/rev: 0=3, 1=4, 2=5, 3=6, 4=7, 5=8
@@ -88,8 +96,20 @@ FEED_LABELS = {
     "run43": 1,  "run44": 2,  "run45": 3,   # DOC=0.015, 3000rpm, feed=4,5,6
 }
 FEED_NAMES  = {0: "3 mm/rev", 1: "4 mm/rev", 2: "5 mm/rev", 3: "6 mm/rev", 4: "7 mm/rev", 5: "8 mm/rev"}
-N_FEED_BANDS = 50  # more bands than DOC to resolve fine amplitude differences
+N_FEED_BANDS = 50
 
+# Feed values present within each speed group (low to high).
+# At a fixed speed only 3 of the 6 feed values appear in the dataset.
+SPEED_GROUP_FEED_VALUES = {
+    0: [3, 4, 5],   # 1500 rpm
+    1: [3, 4, 5],   # 2000 rpm
+    2: [4, 5, 6],   # 3000 rpm
+    3: [5, 6, 7],   # 4000 rpm
+    4: [6, 7, 8],   # 5000 rpm
+}
+
+
+# ── Feature extraction ────────────────────────────────────────────────────
 
 def extract_speed_features(csv_path):
     """Power at spindle harmonic frequencies — ideal for speed classification."""
@@ -128,8 +148,13 @@ def extract_doc_features(csv_path):
     return np.array(features, dtype=np.float32)
 
 
-def extract_feed_features(csv_path):
-    """Log-power in fine-grained broadband bands — feed rate shifts force amplitude across spectrum."""
+def extract_feed_features_normalized(csv_path):
+    """
+    Normalized spectral shape features for feed rate.
+    Each band's power is divided by total signal power before taking log.
+    This cancels DOC's uniform amplitude scaling, leaving only the
+    spectral shape differences caused by feed rate.
+    """
     df        = pd.read_csv(csv_path)
     N         = len(df)
     freq_axis = np.fft.rfftfreq(N, d=1.0 / FS)
@@ -139,11 +164,14 @@ def extract_feed_features(csv_path):
         sig  = df[ch].values.astype(np.float64)
         sig -= sig.mean()
         psd  = np.abs(np.fft.rfft(sig)) ** 2
+        total = psd.sum() + 1e-10
         for lo_f, hi_f in zip(band_edges[:-1], band_edges[1:]):
             mask = (freq_axis >= lo_f) & (freq_axis < hi_f)
-            features.append(np.log1p(psd[mask].sum()))
+            features.append(np.log1p(psd[mask].sum() / total))
     return np.array(features, dtype=np.float32)
 
+
+# ── Dataset loading ───────────────────────────────────────────────────────
 
 def load_dataset(data_dir, label_map, feature_fn):
     runs, X, y = [], [], []
@@ -156,6 +184,8 @@ def load_dataset(data_dir, label_map, feature_fn):
         y.append(label_map[run])
     return runs, np.array(X), np.array(y)
 
+
+# ── Standard CV (speed and DOC) ───────────────────────────────────────────
 
 def leave_one_run_out_cv(runs, X, y, class_names):
     correct, total = 0, 0
@@ -185,17 +215,128 @@ def leave_one_run_out_cv(runs, X, y, class_names):
     return clf
 
 
+# ── Two-stage feed CV ─────────────────────────────────────────────────────
+
+def two_stage_feed_cv(data_dir):
+    """
+    Two-stage leave-one-run-out CV for feed rate.
+
+    Stage 1: predict speed using harmonic-peak SVM trained on 44 runs.
+    Stage 2: within the predicted speed group, predict feed using normalized
+             spectral features trained on the 8 remaining group runs.
+
+    This reduces feed from a 6-class problem confused by speed and DOC
+    variation to a 3-class problem within a fixed speed context.
+    """
+    print("Loading features ...")
+    runs, X_speed, y_speed = load_dataset(data_dir, SPEED_LABELS, extract_speed_features)
+    _,    X_feed,  _       = load_dataset(data_dir, FEED_LABELS,  extract_feed_features_normalized)
+
+    # Within-group feed label (0/1/2) for each run
+    y_group = []
+    for run in runs:
+        spd   = SPEED_LABELS[run]
+        mmrev = FEED_LABELS[run] + 3
+        y_group.append(SPEED_GROUP_FEED_VALUES[spd].index(mmrev))
+    y_group = np.array(y_group)
+
+    correct, total = 0, 0
+    per_class = {c: {"tp": 0, "n": 0} for c in FEED_NAMES}
+
+    print(f"\nTwo-stage leave-one-run-out cross-validation (feed rate):\n")
+    for i, run in enumerate(runs):
+        # Stage 1: leave-one-out speed prediction
+        spd_mask    = np.ones(len(runs), dtype=bool)
+        spd_mask[i] = False
+        spd_clf = make_pipeline(StandardScaler(), SVC(kernel="rbf", C=10, gamma="scale"))
+        spd_clf.fit(X_speed[spd_mask], y_speed[spd_mask])
+        pred_speed = spd_clf.predict(X_speed[[i]])[0]
+
+        # Stage 2: feed prediction within predicted speed group
+        group_mask = np.array(
+            [SPEED_LABELS[r] == pred_speed and r != run for r in runs]
+        )
+        feed_clf = make_pipeline(StandardScaler(), SVC(kernel="rbf", C=10, gamma="scale"))
+        feed_clf.fit(X_feed[group_mask], y_group[group_mask])
+        pred_group = feed_clf.predict(X_feed[[i]])[0]
+
+        # Map group position (0/1/2) back to actual mm/rev and absolute class
+        pred_mmrev = SPEED_GROUP_FEED_VALUES[pred_speed][pred_group]
+        pred_cls   = pred_mmrev - 3
+        true_cls   = FEED_LABELS[run]
+        true_mmrev = true_cls + 3
+
+        per_class[true_cls]["n"]  += 1
+        per_class[true_cls]["tp"] += int(pred_cls == true_cls)
+        correct += int(pred_cls == true_cls)
+        total   += 1
+        status = "OK" if pred_cls == true_cls else f"WRONG -> {pred_mmrev} mm/rev"
+        print(f"  {run:<8}  true={true_mmrev} mm/rev  pred={pred_mmrev} mm/rev  {status}")
+
+    print(f"\nOverall accuracy: {correct}/{total} = {correct/total:.1%}")
+    print("Per-class accuracy:")
+    for c, name in FEED_NAMES.items():
+        d = per_class[c]
+        if d["n"] > 0:
+            print(f"  {name}: {d['tp']}/{d['n']}")
+
+    # Train final models on all data for single-file prediction
+    spd_clf_final = make_pipeline(StandardScaler(), SVC(kernel="rbf", C=10, gamma="scale"))
+    spd_clf_final.fit(X_speed, y_speed)
+
+    group_clfs = {}
+    for spd_class in range(5):
+        gm  = np.array([SPEED_LABELS[r] == spd_class for r in runs])
+        clf = make_pipeline(StandardScaler(), SVC(kernel="rbf", C=10, gamma="scale"))
+        clf.fit(X_feed[gm], y_group[gm])
+        group_clfs[spd_class] = clf
+
+    return spd_clf_final, group_clfs
+
+
+def two_stage_predict_feed(csv_path, data_dir):
+    """Predict feed rate for a single new file using the two-stage approach."""
+    runs, X_speed, y_speed = load_dataset(data_dir, SPEED_LABELS, extract_speed_features)
+    _,    X_feed,  _       = load_dataset(data_dir, FEED_LABELS,  extract_feed_features_normalized)
+
+    y_group = []
+    for run in runs:
+        spd   = SPEED_LABELS[run]
+        mmrev = FEED_LABELS[run] + 3
+        y_group.append(SPEED_GROUP_FEED_VALUES[spd].index(mmrev))
+    y_group = np.array(y_group)
+
+    spd_clf = make_pipeline(StandardScaler(), SVC(kernel="rbf", C=10, gamma="scale"))
+    spd_clf.fit(X_speed, y_speed)
+
+    new_spd_feat  = extract_speed_features(csv_path).reshape(1, -1)
+    pred_speed    = spd_clf.predict(new_spd_feat)[0]
+    print(f"  Stage 1 predicted speed: {SPEED_NAMES[pred_speed]}")
+
+    gm = np.array([SPEED_LABELS[r] == pred_speed for r in runs])
+    feed_clf = make_pipeline(StandardScaler(), SVC(kernel="rbf", C=10, gamma="scale"))
+    feed_clf.fit(X_feed[gm], y_group[gm])
+
+    new_feed_feat = extract_feed_features_normalized(csv_path).reshape(1, -1)
+    pred_group    = feed_clf.predict(new_feed_feat)[0]
+    pred_mmrev    = SPEED_GROUP_FEED_VALUES[pred_speed][pred_group]
+    print(f"  Stage 2 predicted feed:  {pred_mmrev} mm/rev")
+
+
+# ── Standard single-file prediction (speed and DOC) ───────────────────────
+
 def predict_one(csv_path, clf, class_names, feature_fn):
     feat   = feature_fn(csv_path).reshape(1, -1)
     pred   = clf.predict(feat)[0]
     scores = clf.decision_function(feat)[0]
-    label  = list(class_names.values())[0].split()[0]  # "speed" or "0.015"
     print(f"\nPredicted: {class_names[pred]}")
     print("Decision scores (higher = more confident):")
     for i, (cls, name) in enumerate(class_names.items()):
         bar = "#" * max(0, int((scores[i] + 3) * 6))
         print(f"  {name:>12}  {scores[i]:+.2f}  {bar}")
 
+
+# ── Entry point ───────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser()
@@ -205,14 +346,18 @@ def main():
     parser.add_argument("--predict",  default=None,    help="CSV to predict after training")
     args = parser.parse_args()
 
+    if args.target == "feed":
+        print("Target: feed  |  Two-stage approach (speed then feed)\n")
+        two_stage_feed_cv(args.data_dir)
+        if args.predict:
+            print(f"\nPredicting {args.predict} ...")
+            two_stage_predict_feed(args.predict, args.data_dir)
+        return
+
     if args.target == "doc":
         label_map   = DOC_LABELS
         class_names = DOC_NAMES
         feature_fn  = extract_doc_features
-    elif args.target == "feed":
-        label_map   = FEED_LABELS
-        class_names = FEED_NAMES
-        feature_fn  = extract_feed_features
     else:
         label_map   = SPEED_LABELS
         class_names = SPEED_NAMES

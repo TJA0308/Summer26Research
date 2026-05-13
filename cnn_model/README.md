@@ -2,105 +2,147 @@
 
 ## Overview
 
-This approach converts raw vibration signals into scalogram images using the Continuous Wavelet Transform (CWT), then trains a pretrained ResNet/EfficientNet CNN to classify those images.
-
-The three scripts work in sequence:
+Converts raw vibration signals into scalogram images using the Continuous Wavelet Transform (CWT), then fine-tunes a pretrained ResNet18 CNN to classify those images.
 
 ```
-Raw CSV signals → scalogram.py → PNG images → cnn_train.py → .pt model → predict.py → prediction
+Raw CSV signals → scalogram.py → PNG images → cnn_train.py → .pt model
 ```
+
+Three prediction targets are supported: spindle speed, depth of cut (DOC), and feed rate.
 
 ---
 
 ## How It Works
 
-### Step 1: Scalogram Generation (`scalogram.py`)
+### Step 1 — Scalogram Generation (`scalogram.py`)
 
-Each raw CSV file contains three channels of vibration data (ai4, ai5, ai6) sampled at 16,393 Hz. The script applies a Morlet Continuous Wavelet Transform to each channel, producing a 2D time-frequency power map. The three channel maps are stacked as RGB channels into a single 224×224 PNG image.
+Each CSV contains three vibration channels (ai4, ai5, ai6) sampled at 16,393 Hz. The script applies an analytic Morlet CWT to each channel, producing a 2D time-frequency power map. The two primary channels (ai4 = feed-axis vibration, ai6 = acoustic) are mapped to Red and Green; Blue is zeros.
 
-Each run is split into 2 overlapping windows, producing 2 images per run (90 images total across 45 runs).
+Output: 224×224 PNG images. The X-axis is time, Y-axis is frequency (20–4000 Hz, log-spaced), and pixel brightness encodes instantaneous power.
 
-### Step 2: Training (`cnn_train.py`)
+**Key parameters:**
 
-A pretrained ResNet18 (or ResNet50 / EfficientNet-B0) backbone is fine-tuned on the scalogram images. The final classification layer is replaced to match the number of output classes for the chosen target.
+| Parameter | Value | Meaning |
+|-----------|-------|---------|
+| FS | 16393 Hz | Original sample rate |
+| DOWNSAMPLE | 2 | Effective rate = 8196 Hz |
+| F_MIN / F_MAX | 20–4000 Hz | Frequency range |
+| N_FREQS | 300 | Frequency resolution bins |
+| SIGMA | 8.0 | Morlet cycles — higher = sharper frequency, worse time resolution |
+| IMG_SIZE | 224 | Output size (matches ResNet default input) |
+
+**Windowing** (`--n_windows N`): splits each run into N overlapping half-signal windows. This multiplies training data without collecting new runs. Windows are evenly spaced so the last window always ends at the signal end.
+
+### Step 2 — Training (`cnn_train.py`)
+
+Fine-tunes a pretrained ResNet18 on the scalogram images. The final fully-connected layer is replaced with a new head matching the number of output classes. Weights of the best validation epoch are saved automatically.
 
 Supported targets:
 
 | Target | Classes | Labels |
 |--------|---------|--------|
 | `speed` | 5 | 1500 / 2000 / 3000 / 4000 / 5000 rpm |
-| `feed`  | 6 | 3 / 4 / 5 / 6 / 7 / 8 mm/rev |
-| `doc`   | 3 | 0.015 / 0.030 / 0.060 mm |
+| `feed` | 6 | 3 / 4 / 5 / 6 / 7 / 8 mm/rev |
+| `feed_coarse` | 3 | low (3–4) / medium (5–6) / high (7–8) mm/rev |
+| `doc` | 3 | 0.015 / 0.030 / 0.060 mm |
 
-The test set is held out before training and never used to update weights. Best model weights are saved automatically.
+---
 
-### Step 3: Inference (`predict.py`)
+## Train / Test Split
 
-Loads a trained `.pt` model and predicts the class of a new raw CSV file. It generates the scalogram on the fly and averages predictions across 2 windows.
+Test runs are fixed before training and never used to update weights.
+
+**Speed** — 5 test runs (1 per RPM class, all from DOC=0.060):
+`run24, run27, run30, run33, run36`
+
+**Feed / Feed Coarse** — 6 test runs (1 per fine-grained class, spread across DOC and speed):
+
+| Run | Feed (mm/rev) | Speed | DOC |
+|-----|---------------|-------|-----|
+| run25 | 3 | 2000 rpm | 0.060 |
+| run13 | 4 | 3000 rpm | 0.030 |
+| run31 | 5 | 4000 rpm | 0.060 |
+| run17 | 6 | 4000 rpm | 0.030 |
+| run5  | 7 | 5000 rpm | 0.015 |
+| run36 | 8 | 5000 rpm | 0.060 |
+
+**DOC** — 9 test runs (3 per class, spread across speeds):
+
+| Runs | DOC | Speeds |
+|------|-----|--------|
+| run1, run5, run43 | 0.015 mm | 4000, 5000, 3000 rpm |
+| run7, run14, run19 | 0.030 mm | 1500, 3000, 5000 rpm |
+| run22, run29, run36 | 0.060 mm | 1500, 3000, 5000 rpm |
+
+---
+
+## Saved Models
+
+All saved to the project root. Run from `cnn_model/` or adjust paths accordingly.
+
+| File | Target | Accuracy | Scalogram directory | Windows |
+|------|--------|----------|---------------------|---------|
+| `../model_speed.pt` | Speed (5-class) | **100%** | `scalograms_ai4_ai6` | 1 |
+| `../model_doc.pt` | DOC (3-class) | **100%** | `scalograms_ai4_ai6` | 1 |
+| `../model_feed_coarse.pt` | Feed coarse (3-class) | **66.7%** | `scalograms_ai4_ai6` | 1 |
+| `../model_feed.pt` | Feed fine-grained (6-class) | **50%** | `scalograms_ai4_ai6_4w` | 4 |
+
+`model_feed_coarse.pt` classifies feed rate into low (3–4 mm/rev), medium (5–6 mm/rev), and high (7–8 mm/rev). `model_feed.pt` attempts all six individual feed values but is harder to distinguish due to RPM/DOC confounding.
 
 ---
 
 ## Commands
 
-All commands should be run from inside this folder (`cnn_model/`).
+All commands should be run from inside `cnn_model/`.
 
-**Generate scalograms** (run once before training):
+### Generate scalograms
+
 ```bash
-python scalogram.py --data_dir ../data --out_dir ../scalograms
+# 1 window per run — used for speed, doc, and feed_coarse models
+python scalogram.py --input_dir ../data --output_dir ../scalograms_ai4_ai6
+
+# 4 windows per run — used for feed fine-grained model
+python scalogram.py --input_dir ../data --output_dir ../scalograms_ai4_ai6_4w --n_windows 4
 ```
 
-**Train each model:**
+### Train models
+
 ```bash
-python cnn_train.py --img_dir ../scalograms --target speed
-python cnn_train.py --img_dir ../scalograms --target feed
-python cnn_train.py --img_dir ../scalograms --target doc
+# Speed — 100% test accuracy
+python cnn_train.py --img_dir ../scalograms_ai4_ai6 --target speed \
+    --epochs 30 --augment light --save ../model_speed.pt
+
+# DOC — 100% test accuracy
+python cnn_train.py --img_dir ../scalograms_ai4_ai6 --target doc \
+    --epochs 30 --augment light --save ../model_doc.pt
+
+# Feed coarse (3-class) — 66.7% test accuracy
+python cnn_train.py --img_dir ../scalograms_ai4_ai6 --target feed_coarse \
+    --epochs 30 --augment light --save ../model_feed_coarse.pt
+
+# Feed fine-grained (6-class) — 50% test accuracy, needs 4-window scalograms
+python cnn_train.py --img_dir ../scalograms_ai4_ai6_4w --target feed \
+    --epochs 40 --augment light --save ../model_feed.pt
 ```
 
-**Optional training flags:**
-```
---backbone     resnet18 | resnet50 | efficientnet_b0   (default: resnet18)
---augment      none | light | strong                   (default: light)
---epochs       30                                      (default: 30)
---lr           0.001                                   (default: 0.001)
---freeze                                               (freeze backbone, train head only)
-```
+### Optional training flags
 
-**Predict on a new file:**
-```bash
-python predict.py --csv ../data/run24.csv --target speed
-python predict.py --csv ../data/run13.csv --target feed
-python predict.py --csv ../data/run7.csv  --target doc
-```
+| Flag | Default | Effect |
+|------|---------|--------|
+| `--backbone` | `resnet18` | `resnet18`, `resnet50`, or `efficientnet_b0` |
+| `--augment` | `light` | `none`, `light`, or `strong` |
+| `--epochs` | `30` | Number of training epochs |
+| `--lr` | `0.001` | Learning rate |
+| `--freeze` | off | Freeze backbone, train classification head only |
+| `--weighted_loss` | off | Weight CE loss inversely by class frequency |
+| `--n_windows` | `1` | Windows per run in scalogram generation |
 
 ---
 
-## Trained Model Files
+## Why Speed and DOC Are Easy, Feed Is Hard
 
-| File | Target | Classes |
-|------|--------|---------|
-| `best_model.pt`      | Speed | 5 |
-| `best_model_feed.pt` | Feed  | 6 |
-| `best_model_doc.pt`  | DOC   | 3 |
+Speed classification works because different RPMs place spindle harmonics at distinct frequency positions in the scalogram — these survive any normalization.
 
----
+DOC classification works because deeper cuts produce larger-amplitude vibrations, which the model detects from the overall energy pattern.
 
-## Test / Train Split
-
-Test runs are held out before any training and never seen by the model during training:
-
-**Speed** — 5 test runs (1 per RPM class, all DOC=0.060):
-run24, run27, run30, run33, run36
-
-**Feed** — 6 test runs (1 per mm/rev class, spread across DOC/speed):
-run25 (3mm), run13 (4mm), run31 (5mm), run17 (6mm), run5 (7mm), run36 (8mm)
-
-**DOC** — 9 test runs (3 per DOC class, spread across speeds):
-run1, run5, run43 (0.015mm) | run7, run14, run19 (0.030mm) | run22, run29, run36 (0.060mm)
-
----
-
-## Limitations
-
-The scalogram normalization rescales each image independently to fill the full 0-255 range, which removes absolute amplitude information. Because DOC and feed primarily change signal amplitude rather than frequency structure, the CNN struggles to distinguish them reliably. The FFT/SVM model in `../fft_model/` is better suited for DOC and feed classification for this reason.
-
-Speed classification works well because different RPMs place harmonic peaks at distinct frequency positions, which survive normalization.
+Feed rate is harder because its effect on the scalogram is subtle relative to the dominant speed harmonics. The feed rate changes chip load per revolution, which modulates vibration at the tooth-pass frequency — but this signal is partially masked by the RPM-dependent frequency structure. All feed models plateau around 50–67% despite increasing data and normalization strategies.
