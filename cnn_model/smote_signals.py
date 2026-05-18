@@ -30,7 +30,7 @@ from scalogram import (
     analytic_morlet_cwt, build_rgb_image,
     FS, DOWNSAMPLE, F_MIN, F_MAX, N_FREQS, SIGMA, IMG_SIZE, CHANNELS,
 )
-from cnn_train import FEED_LABELS, FEED_TEST_RUNS, SPEED_LABELS, DOC_LABELS
+from cnn_train import FEED_LABELS, FEED_TEST_RUNS, SPEED_LABELS, SPEED_TEST_RUNS, DOC_LABELS
 
 SEED = 42
 
@@ -83,14 +83,18 @@ def main():
     parser = argparse.ArgumentParser(
         description="Generate synthetic scalogram images via signal-space SMOTE."
     )
-    parser.add_argument("--data_dir",    required=True,
+    parser.add_argument("--data_dir",     required=True,
                         help="Folder of raw CSV files (run1.csv ... run45.csv)")
-    parser.add_argument("--output_dir",  required=True,
+    parser.add_argument("--output_dir",   required=True,
                         help="Scalogram image folder to write synthetic PNGs into")
-    parser.add_argument("--n_synthetic", type=int, default=4,
+    parser.add_argument("--n_synthetic",  type=int, default=4,
                         help="Synthetic interpolations to generate per same-class run pair")
-    parser.add_argument("--n_windows",   type=int, default=10,
+    parser.add_argument("--n_windows",    type=int, default=10,
                         help="Windows per synthetic run (must match --n_windows in scalogram.py)")
+    parser.add_argument("--target",       default="feed", choices=["feed", "speed"],
+                        help="Which prediction target to generate synthetics for")
+    parser.add_argument("--target_count", type=int, default=None,
+                        help="Override per-class target run count (default: majority class size)")
     args = parser.parse_args()
 
     random.seed(SEED)
@@ -102,13 +106,25 @@ def main():
 
     fs_eff = FS // DOWNSAMPLE
 
+    # Select label map and test set based on target
+    if args.target == "speed":
+        all_labels = SPEED_LABELS
+        test_runs  = SPEED_TEST_RUNS
+        csv_name   = "smote_speed_labels.csv"
+        csv_fields = ["run", "label"]
+    else:
+        all_labels = FEED_LABELS
+        test_runs  = FEED_TEST_RUNS
+        csv_name   = "smote_labels.csv"
+        csv_fields = ["run", "label", "speed", "doc"]
+
     # Build class -> training-run list (exclude test runs)
     runs_by_class = {}
-    for run, lbl in FEED_LABELS.items():
-        if run not in FEED_TEST_RUNS:
+    for run, lbl in all_labels.items():
+        if run not in test_runs:
             runs_by_class.setdefault(lbl, []).append(run)
 
-    max_count = max(len(v) for v in runs_by_class.values())
+    max_count = args.target_count if args.target_count else max(len(v) for v in runs_by_class.values())
     print("Class distribution (training runs):")
     for c in sorted(runs_by_class):
         status = "majority" if len(runs_by_class[c]) == max_count else f"need +{max_count - len(runs_by_class[c])}"
@@ -141,25 +157,29 @@ def main():
             run_a, run_b = next(pair_cycle)
             alpha = random.uniform(0.1, 0.9)
             syn   = interpolate_signals(class_signals[run_a], class_signals[run_b], alpha)
-            stem  = f"smote_f{cls}_{idx}"
-            dom   = run_a if alpha >= 0.5 else run_b
+            prefix = "smote_s" if args.target == "speed" else "smote_f"
+            stem  = f"{prefix}{cls}_{idx}"
 
             save_windows(
                 syn, stem, output_dir, args.n_windows,
                 DOWNSAMPLE, fs_eff, F_MIN, F_MAX, N_FREQS, SIGMA, IMG_SIZE,
             )
-            label_rows.append({
-                "run":   stem,
-                "label": cls,
-                "speed": SPEED_LABELS[dom],
-                "doc":   DOC_LABELS[dom],
-            })
+            if args.target == "speed":
+                label_rows.append({"run": stem, "label": cls})
+            else:
+                dom = run_a if alpha >= 0.5 else run_b
+                label_rows.append({
+                    "run":   stem,
+                    "label": cls,
+                    "speed": SPEED_LABELS[dom],
+                    "doc":   DOC_LABELS[dom],
+                })
             total_images += args.n_windows
             print(f"  {stem}  alpha={alpha:.3f}  ({run_a} <-> {run_b})")
 
-    lbl_path = output_dir / "smote_labels.csv"
+    lbl_path = output_dir / csv_name
     with open(lbl_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["run", "label", "speed", "doc"])
+        writer = csv.DictWriter(f, fieldnames=csv_fields)
         writer.writeheader()
         writer.writerows(label_rows)
 

@@ -31,7 +31,14 @@ SPEED_LABELS = {
     "run43": 2, "run44": 2, "run45": 2,  # 3000 rpm  DOC=0.015
 }
 SPEED_NAMES = {0: "1500 rpm", 1: "2000 rpm", 2: "3000 rpm", 3: "4000 rpm", 4: "5000 rpm"}
-SPEED_TEST_RUNS = {"run24", "run27", "run30", "run33", "run36"}  # 1 per class, DOC=0.060
+# 3 test runs per class, 1 per DOC level: 15 test total, 30 train total (6 per class)
+SPEED_TEST_RUNS = {
+    "run9",  "run22", "run39",  # class 0 (1500 rpm): DOC=0.030, 0.060, 0.015
+    "run12", "run27", "run40",  # class 1 (2000 rpm): DOC=0.030, 0.060, 0.015
+    "run15", "run28", "run45",  # class 2 (3000 rpm): DOC=0.030, 0.060, 0.015
+    "run2",  "run16", "run33",  # class 3 (4000 rpm): DOC=0.015, 0.030, 0.060
+    "run5",  "run20", "run36",  # class 4 (5000 rpm): DOC=0.015, 0.030, 0.060
+}
 
 # ── Feed rate prediction ──────────────────────────────────────────────────
 # Actual feed values in mm/rev: 0=3, 1=4, 2=5, 3=6, 4=7, 5=8
@@ -191,9 +198,9 @@ def load_split_conditioned(img_dir, label_map, test_runs, speed_map, doc_map):
     return (tr_p, tr_l, tr_spd, tr_doc), (te_p, te_l, te_spd, te_doc)
 
 
-def load_smote_map(img_dir):
-    """Return {run_stem: label} from smote_labels.csv if present, else {}."""
-    smote_csv = Path(img_dir) / "smote_labels.csv"
+def load_smote_map(img_dir, csv_name="smote_labels.csv"):
+    """Return {run_stem: label} from the given csv if present, else {}."""
+    smote_csv = Path(img_dir) / csv_name
     if not smote_csv.exists():
         return {}
     import csv as _csv
@@ -544,6 +551,10 @@ def main():
             if args.target == "feed_coarse":
                 smote_map = {run: lbl // 2 for run, lbl in smote_map.items()}
             print(f"  SMOTE: {len(smote_map)} synthetic runs loaded from smote_labels.csv")
+    elif args.target == "speed":
+        smote_map = load_smote_map(img_dir, "smote_speed_labels.csv")
+        if smote_map:
+            print(f"  SMOTE: {len(smote_map)} synthetic runs loaded from smote_speed_labels.csv")
 
     (tr_p, tr_l), (te_p, te_l) = load_split(img_dir, label_map, test_runs, smote_map)
 
