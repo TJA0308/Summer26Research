@@ -201,6 +201,20 @@ def load_smote_map(img_dir):
         return {row["run"]: int(row["label"]) for row in _csv.DictReader(f)}
 
 
+def load_smote_cond_map(img_dir):
+    """Return {run_stem: (label, speed, doc)} from smote_labels.csv if present, else {}."""
+    smote_csv = Path(img_dir) / "smote_labels.csv"
+    if not smote_csv.exists():
+        return {}
+    import csv as _csv
+    result = {}
+    with open(smote_csv) as f:
+        for row in _csv.DictReader(f):
+            if "speed" in row and "doc" in row:
+                result[row["run"]] = (int(row["label"]), int(row["speed"]), int(row["doc"]))
+    return result
+
+
 def load_split(img_dir, label_map, test_runs, extra_label_map=None):
     combined_map = {**label_map, **(extra_label_map or {})}
     train_paths, train_labels = [], []
@@ -449,6 +463,16 @@ def main():
         (tr_p, tr_l, tr_spd, tr_doc), (te_p, te_l, te_spd, te_doc) = \
             load_split_conditioned(img_dir, label_map, test_runs, SPEED_LABELS, DOC_LABELS)
 
+        smote_cond = load_smote_cond_map(img_dir)
+        if smote_cond:
+            if args.target == "feed_coarse":
+                smote_cond = {r: (lbl // 2, spd, doc) for r, (lbl, spd, doc) in smote_cond.items()}
+            for run, (lbl, spd, doc) in smote_cond.items():
+                for png in sorted(img_dir.glob(f"{run}_w*.png")):
+                    tr_p.append(png); tr_l.append(lbl)
+                    tr_spd.append(spd); tr_doc.append(doc)
+            print(f"  SMOTE: {len(smote_cond)} synthetic runs loaded from smote_labels.csv")
+
         print(f"\nTarget: {args.target} [conditioned on speed+DOC]"
               f"  |  Train: {len(tr_p)} images | Test: {len(te_p)} images")
         for c, name in class_names.items():
@@ -490,7 +514,7 @@ def main():
             if te_acc > best_test_acc:
                 best_test_acc = te_acc
                 torch.save(model.state_dict(), args.save)
-            print(f"{epoch:>5} {tr_loss:>10.4f} {tr_acc:>10.3f} {te_loss:>10.4f} {te_acc:>10.3f}")
+            print(f"{epoch:>5} {tr_loss:>10.4f} {tr_acc:>10.3f} {te_loss:>10.4f} {te_acc:>10.3f}", flush=True)
 
         print(f"\nBest test accuracy: {best_test_acc:.3f}")
         print(f"Model saved to {args.save}")
@@ -517,6 +541,8 @@ def main():
     if args.target in ("feed", "feed_coarse"):
         smote_map = load_smote_map(img_dir)
         if smote_map:
+            if args.target == "feed_coarse":
+                smote_map = {run: lbl // 2 for run, lbl in smote_map.items()}
             print(f"  SMOTE: {len(smote_map)} synthetic runs loaded from smote_labels.csv")
 
     (tr_p, tr_l), (te_p, te_l) = load_split(img_dir, label_map, test_runs, smote_map)
@@ -569,7 +595,7 @@ def main():
         if te_acc > best_test_acc:
             best_test_acc = te_acc
             torch.save(model.state_dict(), args.save)
-        print(f"{epoch:>5} {tr_loss:>10.4f} {tr_acc:>10.3f} {te_loss:>10.4f} {te_acc:>10.3f}")
+        print(f"{epoch:>5} {tr_loss:>10.4f} {tr_acc:>10.3f} {te_loss:>10.4f} {te_acc:>10.3f}", flush=True)
 
     print(f"\nBest test accuracy: {best_test_acc:.3f}")
     print(f"Model saved to {args.save}")

@@ -30,7 +30,7 @@ from scalogram import (
     analytic_morlet_cwt, build_rgb_image,
     FS, DOWNSAMPLE, F_MIN, F_MAX, N_FREQS, SIGMA, IMG_SIZE, CHANNELS,
 )
-from cnn_train import FEED_LABELS, FEED_TEST_RUNS
+from cnn_train import FEED_LABELS, FEED_TEST_RUNS, SPEED_LABELS, DOC_LABELS
 
 SEED = 42
 
@@ -133,26 +133,33 @@ def main():
             for run in runs
         }
 
-        idx   = 0
-        pairs = list(itertools.combinations(runs, 2))
-        for run_a, run_b in pairs:
-            for _ in range(args.n_synthetic):
-                alpha = random.uniform(0.1, 0.9)
-                syn   = interpolate_signals(class_signals[run_a], class_signals[run_b], alpha)
-                stem  = f"smote_f{cls}_{idx}"
+        needed     = max_count - len(runs)
+        pairs      = list(itertools.combinations(runs, 2))
+        pair_cycle = itertools.cycle(pairs)
+        # Generate exactly `needed` synthetics, cycling through pairs evenly
+        for idx in range(needed):
+            run_a, run_b = next(pair_cycle)
+            alpha = random.uniform(0.1, 0.9)
+            syn   = interpolate_signals(class_signals[run_a], class_signals[run_b], alpha)
+            stem  = f"smote_f{cls}_{idx}"
+            dom   = run_a if alpha >= 0.5 else run_b
 
-                save_windows(
-                    syn, stem, output_dir, args.n_windows,
-                    DOWNSAMPLE, fs_eff, F_MIN, F_MAX, N_FREQS, SIGMA, IMG_SIZE,
-                )
-                label_rows.append({"run": stem, "label": cls})
-                total_images += args.n_windows
-                print(f"  {stem}  alpha={alpha:.3f}  ({run_a} <-> {run_b})")
-                idx += 1
+            save_windows(
+                syn, stem, output_dir, args.n_windows,
+                DOWNSAMPLE, fs_eff, F_MIN, F_MAX, N_FREQS, SIGMA, IMG_SIZE,
+            )
+            label_rows.append({
+                "run":   stem,
+                "label": cls,
+                "speed": SPEED_LABELS[dom],
+                "doc":   DOC_LABELS[dom],
+            })
+            total_images += args.n_windows
+            print(f"  {stem}  alpha={alpha:.3f}  ({run_a} <-> {run_b})")
 
     lbl_path = output_dir / "smote_labels.csv"
     with open(lbl_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["run", "label"])
+        writer = csv.DictWriter(f, fieldnames=["run", "label", "speed", "doc"])
         writer.writeheader()
         writer.writerows(label_rows)
 
