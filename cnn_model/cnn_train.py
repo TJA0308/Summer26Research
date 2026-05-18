@@ -95,6 +95,36 @@ DOC_TEST_RUNS = {
     "run22", "run29", "run36",   # class 2 (0.060): 1500rpm, 3000rpm, 5000rpm
 }
 
+# ── Surface roughness prediction (Ra μm) ─────────────────────────────────
+# 0=Smooth (Ra<0.7), 1=Medium (0.7≤Ra≤1.0), 2=Rough (Ra>1.0)
+RA_LABELS = {
+    # DOC=0.015 — all smooth
+    "run1": 0,  "run2": 0,  "run3": 0,    # Ra: 0.392, 0.282, 0.328
+    "run4": 0,  "run5": 0,  "run6": 0,    # Ra: 0.302, 0.424, 0.448
+    "run37": 0, "run38": 0, "run39": 0,   # Ra: 0.416, 0.302, 0.326
+    "run40": 0, "run41": 0, "run42": 0,   # Ra: 0.328, 0.304, 0.454
+    "run43": 0, "run44": 0, "run45": 0,   # Ra: 0.364, 0.314, 0.414
+    # DOC=0.030 — mixed
+    "run7": 1,  "run8": 1,  "run9": 0,    # Ra: 0.930, 0.852, 0.558
+    "run10": 0, "run11": 1, "run12": 1,   # Ra: 0.640, 0.896, 0.902
+    "run13": 0, "run14": 0, "run15": 0,   # Ra: 0.494, 0.418, 0.482
+    "run16": 1, "run17": 0, "run18": 0,   # Ra: 0.834, 0.678, 0.384
+    "run19": 1, "run20": 2, "run21": 2,   # Ra: 0.864, 1.048, 1.638
+    # DOC=0.060 — mostly medium/rough
+    "run22": 2, "run23": 1, "run24": 1,   # Ra: 1.186, 0.814, 0.726
+    "run25": 0, "run26": 1, "run27": 1,   # Ra: 0.596, 0.838, 0.868
+    "run28": 2, "run29": 2, "run30": 2,   # Ra: 1.340, 1.108, 1.010
+    "run31": 1, "run32": 2, "run33": 2,   # Ra: 0.820, 1.612, 1.490
+    "run34": 2, "run35": 2, "run36": 2,   # Ra: 2.084, 1.980, 1.790
+}
+RA_NAMES = {0: "Smooth (Ra<0.7)", 1: "Medium (0.7-1.0)", 2: "Rough (Ra>1.0)"}
+# 2 test per class, spread across DOC/speed: 6 test, 39 train
+RA_TEST_RUNS = {
+    "run5",  "run43",   # Smooth: DOC=0.015 5000rpm, 3000rpm
+    "run7",  "run27",   # Medium: DOC=0.030 1500rpm, DOC=0.060 2000rpm
+    "run22", "run34",   # Rough:  DOC=0.060 1500rpm, 5000rpm
+}
+
 # Legacy aliases (used by load_split default path)
 RUN_LABELS = SPEED_LABELS
 TEST_RUNS  = SPEED_TEST_RUNS
@@ -161,13 +191,24 @@ def load_split_conditioned(img_dir, label_map, test_runs, speed_map, doc_map):
     return (tr_p, tr_l, tr_spd, tr_doc), (te_p, te_l, te_spd, te_doc)
 
 
-def load_split(img_dir, label_map, test_runs):
+def load_smote_map(img_dir):
+    """Return {run_stem: label} from smote_labels.csv if present, else {}."""
+    smote_csv = Path(img_dir) / "smote_labels.csv"
+    if not smote_csv.exists():
+        return {}
+    import csv as _csv
+    with open(smote_csv) as f:
+        return {row["run"]: int(row["label"]) for row in _csv.DictReader(f)}
+
+
+def load_split(img_dir, label_map, test_runs, extra_label_map=None):
+    combined_map = {**label_map, **(extra_label_map or {})}
     train_paths, train_labels = [], []
     test_paths,  test_labels  = [], []
-    train_runs = set(label_map.keys()) - test_runs
+    train_runs = set(combined_map.keys()) - test_runs
     for png in sorted(img_dir.glob("*.png")):
         run = png.stem.split("_w")[0]
-        label = label_map.get(run)
+        label = combined_map.get(run)
         if label is None:
             continue
         if run in test_runs:
@@ -334,8 +375,8 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--img_dir",      required=True,            help="Folder of scalogram PNGs")
     parser.add_argument("--target",       default="speed",
-                        choices=["speed", "feed", "feed_coarse", "doc"],
-                        help="Prediction target: speed (5 cls), feed (6 cls), feed_coarse (3 cls), doc (3 cls)")
+                        choices=["speed", "feed", "feed_coarse", "doc", "roughness"],
+                        help="Prediction target: speed (5 cls), feed (6 cls), feed_coarse (3 cls), doc (3 cls), roughness (3 cls)")
     parser.add_argument("--epochs",       type=int,   default=30,   help="Number of training epochs")
     parser.add_argument("--lr",           type=float, default=1e-3, help="Initial learning rate")
     parser.add_argument("--batch",        type=int,   default=8,    help="Batch size")
@@ -384,6 +425,13 @@ def main():
         num_classes = 3
         if args.save == "best_model.pt":
             args.save = "best_model_doc.pt"
+    elif args.target == "roughness":
+        label_map   = RA_LABELS
+        class_names = RA_NAMES
+        test_runs   = RA_TEST_RUNS
+        num_classes = 3
+        if args.save == "best_model.pt":
+            args.save = "best_model_roughness.pt"
     else:
         label_map   = SPEED_LABELS
         class_names = SPEED_NAMES
@@ -465,7 +513,13 @@ def main():
                 print(f"  class {c} ({name}): {correct}/{len(idx)}{detail}")
         return
 
-    (tr_p, tr_l), (te_p, te_l) = load_split(img_dir, label_map, test_runs)
+    smote_map = {}
+    if args.target in ("feed", "feed_coarse"):
+        smote_map = load_smote_map(img_dir)
+        if smote_map:
+            print(f"  SMOTE: {len(smote_map)} synthetic runs loaded from smote_labels.csv")
+
+    (tr_p, tr_l), (te_p, te_l) = load_split(img_dir, label_map, test_runs, smote_map)
 
     print(f"\nTarget: {args.target}  |  Train: {len(tr_p)} images | Test: {len(te_p)} images")
     for c, name in class_names.items():

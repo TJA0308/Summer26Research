@@ -26,7 +26,7 @@ Classifies steel milling process parameters (spindle speed, depth of cut, feed r
 
 ## Trained Models
 
-Four models are saved in the project root:
+Five models are saved in the project root:
 
 | File | Predicts | Classes | Test Accuracy | Scalogram dir needed |
 |------|----------|---------|---------------|----------------------|
@@ -34,6 +34,7 @@ Four models are saved in the project root:
 | `model_doc.pt` | Depth of cut | 3 (0.015/0.030/0.060 mm) | **100%** | `scalograms_ai4_ai6` |
 | `model_feed_coarse.pt` | Feed rate (coarse) | 3 (low/med/high) | **66.7%** | `scalograms_ai4_ai6` |
 | `model_feed.pt` | Feed rate (fine) | 6 (3–8 mm/rev) | **50%** | `scalograms_ai4_ai6_4w` |
+| `model_roughness.pt` | Surface roughness (Ra) | 3 (smooth/medium/rough) | **83.3%** | `scalograms_ai4_ai6` |
 
 ## Pipeline
 
@@ -62,6 +63,7 @@ python cnn_model/cnn_train.py --img_dir scalograms_ai4_ai6 --target speed --save
 python cnn_model/cnn_train.py --img_dir scalograms_ai4_ai6 --target doc --save model_doc.pt
 python cnn_model/cnn_train.py --img_dir scalograms_ai4_ai6 --target feed_coarse --save model_feed_coarse.pt
 python cnn_model/cnn_train.py --img_dir scalograms_ai4_ai6_4w --target feed --epochs 40 --save model_feed.pt
+python cnn_model/cnn_train.py --img_dir scalograms_ai4_ai6 --target roughness --epochs 30 --augment light --save model_roughness.pt
 ```
 
 ## Project Structure
@@ -79,6 +81,7 @@ model_speed.pt            Best speed model (100%)
 model_doc.pt              Best DOC model (100%)
 model_feed_coarse.pt      Best coarse feed model (66.7%)
 model_feed.pt             Best fine-grained feed model (50%)
+model_roughness.pt        Best surface roughness model (83.3%)
 ```
 
 See `cnn_model/README.md` for full detail on training options, per-class results, and why feed rate is harder to classify than speed or DOC.

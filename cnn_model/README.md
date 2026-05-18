@@ -45,6 +45,7 @@ Supported targets:
 | `feed` | 6 | 3 / 4 / 5 / 6 / 7 / 8 mm/rev |
 | `feed_coarse` | 3 | low (3–4) / medium (5–6) / high (7–8) mm/rev |
 | `doc` | 3 | 0.015 / 0.030 / 0.060 mm |
+| `roughness` | 3 | Smooth (Ra<0.7) / Medium (0.7–1.0) / Rough (Ra>1.0) |
 
 ---
 
@@ -74,6 +75,16 @@ Test runs are fixed before training and never used to update weights.
 | run7, run14, run19 | 0.030 mm | 1500, 3000, 5000 rpm |
 | run22, run29, run36 | 0.060 mm | 1500, 3000, 5000 rpm |
 
+**Roughness** — 6 test runs (2 per class):
+
+| Runs | Ra class | Ra values |
+|------|----------|-----------|
+| run5, run43 | Smooth (Ra<0.7) | 0.424, 0.364 μm |
+| run7, run27 | Medium (0.7–1.0) | 0.930, 0.868 μm |
+| run22, run34 | Rough (Ra>1.0) | 1.186, 2.084 μm |
+
+Ra labels come from `steel Milling Signal files and Surface Roughness.xlsx`. Class distribution: 23 Smooth / 11 Medium / 11 Rough.
+
 ---
 
 ## Saved Models
@@ -86,6 +97,7 @@ All saved to the project root. Run from `cnn_model/` or adjust paths accordingly
 | `../model_doc.pt` | DOC (3-class) | **100%** | `scalograms_ai4_ai6` | 1 |
 | `../model_feed_coarse.pt` | Feed coarse (3-class) | **66.7%** | `scalograms_ai4_ai6` | 1 |
 | `../model_feed.pt` | Feed fine-grained (6-class) | **50%** | `scalograms_ai4_ai6_4w` | 4 |
+| `../model_roughness.pt` | Surface roughness Ra (3-class) | **83.3%** | `scalograms_ai4_ai6` | 1 |
 
 `model_feed_coarse.pt` classifies feed rate into low (3–4 mm/rev), medium (5–6 mm/rev), and high (7–8 mm/rev). `model_feed.pt` attempts all six individual feed values but is harder to distinguish due to RPM/DOC confounding.
 
@@ -123,6 +135,10 @@ python cnn_train.py --img_dir ../scalograms_ai4_ai6 --target feed_coarse \
 # Feed fine-grained (6-class) — 50% test accuracy, needs 4-window scalograms
 python cnn_train.py --img_dir ../scalograms_ai4_ai6_4w --target feed \
     --epochs 40 --augment light --save ../model_feed.pt
+
+# Surface roughness Ra (3-class) — 83.3% test accuracy
+python cnn_train.py --img_dir ../scalograms_ai4_ai6 --target roughness \
+    --epochs 30 --augment light --save ../model_roughness.pt
 ```
 
 ### Optional training flags
