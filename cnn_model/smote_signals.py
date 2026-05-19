@@ -57,11 +57,21 @@ def signal_to_powers(signal_dict, downsample, fs_eff, f_min, f_max, n_freqs, sig
 
 
 def save_windows(signal_dict, stem, output_dir, n_windows,
-                 downsample, fs_eff, f_min, f_max, n_freqs, sigma, img_size):
+                 downsample, fs_eff, f_min, f_max, n_freqs, sigma, img_size,
+                 freq_interleave=False):
     """
-    Split signal into n_windows overlapping half-signal windows, compute CWT,
-    and save as PNG. Mirrors the windowing logic in scalogram.py process_csv().
+    Generate n_windows scalogram images from signal_dict.
+    freq_interleave=True: compute CWT on full signal, slice every n-th frequency row.
+    freq_interleave=False: split into overlapping half-signal time windows.
     """
+    if freq_interleave and n_windows > 1:
+        full_powers = signal_to_powers(signal_dict, downsample, fs_eff, f_min, f_max, n_freqs, sigma)
+        for w in range(n_windows):
+            powers = [p[w::n_windows, :] for p in full_powers]
+            img    = build_rgb_image(powers, img_size)
+            Image.fromarray(img).save(output_dir / f"{stem}_w{w + 1}.png")
+        return
+
     N = len(next(iter(signal_dict.values())))
     window_size = N // 2
     hop = max(1, (N - window_size) // (n_windows - 1)) if n_windows > 1 else N
@@ -91,10 +101,12 @@ def main():
                         help="Synthetic interpolations to generate per same-class run pair")
     parser.add_argument("--n_windows",    type=int, default=10,
                         help="Windows per synthetic run (must match --n_windows in scalogram.py)")
-    parser.add_argument("--target",       default="feed", choices=["feed", "speed"],
+    parser.add_argument("--target",         default="feed", choices=["feed", "speed"],
                         help="Which prediction target to generate synthetics for")
-    parser.add_argument("--target_count", type=int, default=None,
+    parser.add_argument("--target_count",   type=int, default=None,
                         help="Override per-class target run count (default: majority class size)")
+    parser.add_argument("--freq_interleave", action="store_true",
+                        help="Interleave frequency rows across windows instead of time windowing")
     args = parser.parse_args()
 
     random.seed(SEED)
@@ -111,12 +123,12 @@ def main():
         all_labels = SPEED_LABELS
         test_runs  = SPEED_TEST_RUNS
         csv_name   = "smote_speed_labels.csv"
-        csv_fields = ["run", "label"]
+        csv_fields = ["run", "label", "parent_a", "parent_b"]
     else:
         all_labels = FEED_LABELS
         test_runs  = FEED_TEST_RUNS
         csv_name   = "smote_labels.csv"
-        csv_fields = ["run", "label", "speed", "doc"]
+        csv_fields = ["run", "label", "speed", "doc", "parent_a", "parent_b"]
 
     # Build class -> training-run list (exclude test runs)
     runs_by_class = {}
@@ -163,16 +175,20 @@ def main():
             save_windows(
                 syn, stem, output_dir, args.n_windows,
                 DOWNSAMPLE, fs_eff, F_MIN, F_MAX, N_FREQS, SIGMA, IMG_SIZE,
+                freq_interleave=args.freq_interleave,
             )
             if args.target == "speed":
-                label_rows.append({"run": stem, "label": cls})
+                label_rows.append({"run": stem, "label": cls,
+                                   "parent_a": run_a, "parent_b": run_b})
             else:
                 dom = run_a if alpha >= 0.5 else run_b
                 label_rows.append({
-                    "run":   stem,
-                    "label": cls,
-                    "speed": SPEED_LABELS[dom],
-                    "doc":   DOC_LABELS[dom],
+                    "run":      stem,
+                    "label":    cls,
+                    "speed":    SPEED_LABELS[dom],
+                    "doc":      DOC_LABELS[dom],
+                    "parent_a": run_a,
+                    "parent_b": run_b,
                 })
             total_images += args.n_windows
             print(f"  {stem}  alpha={alpha:.3f}  ({run_a} <-> {run_b})")

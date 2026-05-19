@@ -78,7 +78,7 @@ def compute_powers(df, channels, fs_eff, f_min, f_max, n_freqs, sigma, downsampl
 def process_csv(csv_path, output_dir, fs=FS, downsample=DOWNSAMPLE, f_min=F_MIN,
                 f_max=F_MAX, n_freqs=N_FREQS, sigma=SIGMA, img_size=IMG_SIZE,
                 channels=CHANNELS, time_col=TIME_COL, n_windows=1, global_ranges=None,
-                pernorm=False):
+                pernorm=False, freq_interleave=False):
     stem      = csv_path.stem
     df        = pd.read_csv(csv_path)
     missing   = [c for c in channels if c not in df.columns]
@@ -109,6 +109,26 @@ def process_csv(csv_path, output_dir, fs=FS, downsample=DOWNSAMPLE, f_min=F_MIN,
         Image.fromarray(img).save(out)
         print(f"-> {out.name}")
         return [out]
+
+    # Frequency-interleave mode: compute CWT once on full signal, slice freq rows.
+    # Image w gets rows w, w+n_windows, w+2*n_windows, ... → full time, sub-sampled freqs.
+    if freq_interleave and n_windows > 1:
+        full_powers = compute_powers(df, channels, fs_eff, f_min, f_max_use, n_freqs, sigma, downsample)
+        if pernorm and global_ranges is None:
+            norm_ranges = []
+            for pw in full_powers:
+                lp = np.log1p(pw.astype(np.float32))
+                norm_ranges.append((float(np.percentile(lp, 2)), float(np.percentile(lp, 98))))
+        saved = []
+        for w in range(n_windows):
+            powers = [p[w::n_windows, :] for p in full_powers]
+            img    = build_rgb_image(powers, img_size, global_ranges=norm_ranges)
+            out    = output_dir / f"{stem}_w{w + 1}.png"
+            Image.fromarray(img).save(out)
+            saved.append(out)
+            print(f"\n    w{w + 1} [freqs {w}::{n_windows}] -> {out.name}", end=" ")
+        print()
+        return saved
 
     # Evenly-spaced overlapping windows of fixed length (N//2).
     # hop is computed so that n_windows windows span the full signal,
@@ -158,8 +178,10 @@ def main():
                         help="Windows per run (1=full signal, 2=two overlapping half-signal windows)")
     parser.add_argument("--global_norm", action="store_true",
                         help="Two-pass global normalization: preserves amplitude across runs (better for feed/DOC)")
-    parser.add_argument("--pernorm",    action="store_true",
+    parser.add_argument("--pernorm",       action="store_true",
                         help="Per-run normalization: normalize each run's windows using stats from its full signal")
+    parser.add_argument("--freq_interleave", action="store_true",
+                        help="Interleave frequency rows across windows instead of time windowing")
     parser.add_argument("--labels",     action="store_true")
     args = parser.parse_args()
 
@@ -219,7 +241,8 @@ def main():
                                 f_min=args.f_min, f_max=args.f_max, n_freqs=args.n_freqs,
                                 sigma=args.sigma, img_size=args.img_size, channels=CHANNELS,
                                 time_col=TIME_COL, n_windows=args.n_windows,
-                                global_ranges=global_ranges, pernorm=args.pernorm)
+                                global_ranges=global_ranges, pernorm=args.pernorm,
+                                freq_interleave=args.freq_interleave)
             all_saved.extend(saved)
         except Exception as e:
             print(f"  ERROR: {e}")

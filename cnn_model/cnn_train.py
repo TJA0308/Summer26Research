@@ -208,6 +208,44 @@ def load_smote_map(img_dir, csv_name="smote_labels.csv"):
         return {row["run"]: int(row["label"]) for row in _csv.DictReader(f)}
 
 
+def load_smote_full(img_dir, csv_name="smote_labels.csv"):
+    """Return {run_stem: dict} with all CSV columns including parent_a, parent_b."""
+    smote_csv = Path(img_dir) / csv_name
+    if not smote_csv.exists():
+        return {}
+    import csv as _csv
+    result = {}
+    with open(smote_csv) as f:
+        for row in _csv.DictReader(f):
+            result[row["run"]] = {k: v for k, v in row.items()}
+            result[row["run"]]["label"] = int(row["label"])
+    return result
+
+
+def smote_for_fold(smote_full, train_runs):
+    """Keep only synthetics whose both parents are in train_runs (no data leakage)."""
+    return {run: d["label"] for run, d in smote_full.items()
+            if d.get("parent_a") in train_runs and d.get("parent_b") in train_runs}
+
+
+def stratified_kfold(label_map, k, seed=SEED):
+    """Return k (train_runs_set, test_runs_set) tuples, stratified by label."""
+    from collections import defaultdict
+    class_runs = defaultdict(list)
+    for run, lbl in label_map.items():
+        class_runs[lbl].append(run)
+    for lbl in class_runs:
+        class_runs[lbl] = sorted(class_runs[lbl])
+
+    folds = [[] for _ in range(k)]
+    for lbl in sorted(class_runs):
+        for i, run in enumerate(class_runs[lbl]):
+            folds[i % k].append(run)
+
+    return [(set(run for j, fold in enumerate(folds) for run in fold if j != i),
+             set(folds[i])) for i in range(k)]
+
+
 def load_smote_cond_map(img_dir):
     """Return {run_stem: (label, speed, doc)} from smote_labels.csv if present, else {}."""
     smote_csv = Path(img_dir) / "smote_labels.csv"
@@ -419,6 +457,8 @@ def main():
     parser.add_argument("--weighted_loss", action="store_true",      help="Weight CE loss inversely by class frequency")
     parser.add_argument("--conditioned",   action="store_true",
                         help="Cascade mode: concatenate speed+DOC one-hot vectors with image features before classifying feed")
+    parser.add_argument("--kfold",         type=int, default=1,
+                        help="K-fold cross-validation (1=fixed split, 5=5-fold CV)")
     args = parser.parse_args()
 
     seed_everything(SEED)
@@ -542,6 +582,70 @@ def main():
                 wrong_as = [all_preds[i] for i in idx if all_preds[i] != all_labels[i]]
                 detail   = f"  predicted as {wrong_as}" if wrong_as else ""
                 print(f"  class {c} ({name}): {correct}/{len(idx)}{detail}")
+        return
+
+    if args.kfold > 1:
+        smote_csv = ("smote_speed_labels.csv" if args.target == "speed"
+                     else "smote_labels.csv")
+        smote_full  = load_smote_full(img_dir, smote_csv)
+        splits      = stratified_kfold(label_map, args.kfold)
+        fold_accs   = []
+        train_tf, val_tf = build_transforms(args.augment)
+
+        for fold_i, (fold_train, fold_test) in enumerate(splits, 1):
+            print(f"\n{'='*52}")
+            print(f"Fold {fold_i}/{args.kfold}  train={len(fold_train)} runs  test={len(fold_test)} runs")
+            fold_smote = smote_for_fold(smote_full, fold_train)
+            if args.target == "feed_coarse":
+                fold_smote = {r: lbl // 2 for r, lbl in fold_smote.items()}
+
+            (tr_p, tr_l), (te_p, te_l) = load_split(img_dir, label_map, fold_test, fold_smote)
+            if not tr_p:
+                print("No training images, skipping."); continue
+
+            for c, name in class_names.items():
+                print(f"  class {c} ({name}): {tr_l.count(c)} train / {te_l.count(c)} test")
+
+            train_ds = ScalogramDataset(tr_p, tr_l, train_tf)
+            test_ds  = ScalogramDataset(te_p, te_l, val_tf)
+            train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True,  num_workers=0)
+            test_dl  = DataLoader(test_ds,  batch_size=args.batch, shuffle=False, num_workers=0)
+
+            model = build_model(args.backbone, num_classes=num_classes,
+                                freeze_backbone=args.freeze, dropout=args.dropout).to(device)
+            if args.weighted_loss:
+                counts  = np.bincount(tr_l, minlength=num_classes).astype(np.float32)
+                weights = torch.tensor(1.0 / np.maximum(counts, 1)).to(device)
+                weights = weights / weights.sum() * num_classes
+                criterion = nn.CrossEntropyLoss(weight=weights)
+                print(f"Class weights: {weights.cpu().numpy().round(3)}")
+            else:
+                criterion = nn.CrossEntropyLoss()
+            optimizer = torch.optim.Adam(
+                filter(lambda p: p.requires_grad, model.parameters()),
+                lr=args.lr, weight_decay=args.weight_decay)
+            scheduler = build_scheduler(args.scheduler, optimizer, args.epochs)
+
+            print(f"\n{'Epoch':>5} {'Train Loss':>10} {'Train Acc':>10} {'Test Loss':>10} {'Test Acc':>10}")
+            print("-" * 52)
+            best_fold_acc = 0.0
+            fold_save = args.save.replace(".pt", f"_fold{fold_i}.pt")
+            for epoch in range(1, args.epochs + 1):
+                tr_loss, tr_acc = train_epoch(model, train_dl, criterion, optimizer, device)
+                te_loss, te_acc = eval_epoch(model, test_dl,  criterion, device)
+                scheduler.step()
+                if te_acc > best_fold_acc:
+                    best_fold_acc = te_acc
+                    torch.save(model.state_dict(), fold_save)
+                print(f"{epoch:>5} {tr_loss:>10.4f} {tr_acc:>10.3f} {te_loss:>10.4f} {te_acc:>10.3f}", flush=True)
+
+            fold_accs.append(best_fold_acc)
+            print(f"\nFold {fold_i} best: {best_fold_acc:.3f}  saved -> {fold_save}")
+
+        print(f"\n{'='*52}")
+        print(f"K-fold ({args.kfold}) results: {[f'{a:.3f}' for a in fold_accs]}")
+        if fold_accs:
+            print(f"Mean: {np.mean(fold_accs):.3f}  Std: {np.std(fold_accs):.3f}")
         return
 
     smote_map = {}
