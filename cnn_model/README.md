@@ -103,6 +103,40 @@ All saved to the project root. Run from `cnn_model/` or adjust paths accordingly
 
 ---
 
+## Multi-Architecture Experiments (`exp_models/`)
+
+`experiment_runner.py` sweeps backbone architectures and data strategies on 10-window scalograms with SMOTE. Run with:
+
+```bash
+python experiment_runner.py --target feed      # feed rate experiments
+python experiment_runner.py --target roughness # roughness experiments
+python experiment_runner.py --target both      # speed + feed (default)
+```
+
+### Feed Rate Results (6-class, AdamW, cosine LR, 20 epochs, batch=16)
+
+| Model | Backbone | Data | Accuracy |
+|-------|----------|------|----------|
+| `feed_rn18_10w_adamw.pt` | ResNet18 | `scalograms_10w` + SMOTE | **48.3%** |
+| `feed_effb0_10w_adamw.pt` | EfficientNet-B0 | `scalograms_10w` + SMOTE | 38.3% |
+| `feed_effb0_10w_fi_adamw.pt` | EfficientNet-B0 | freq-interleave scalograms | 38.3% |
+| `feed_cnxt_10w_adamw.pt` | ConvNeXt-Tiny | `scalograms_10w` + SMOTE | 35.0% |
+| `feed_effb0_both_adamw.pt` | EfficientNet-B0 | both dirs merged (2x data) | 31.7% |
+| `feed_effb0_10w_mixup_adamw.pt` | EfficientNet-B0 | + MixUp alpha=0.2 | 16.7% |
+
+Classes 1 (4 mm/rev), 3 (6 mm/rev), 4 (7 mm/rev) collapse to adjacent class predictions across all architectures. No experiment reached 70%.
+
+### Roughness Results (3-class, AdamW, cosine LR, 20 epochs, batch=16)
+
+| Model | Backbone | Data | Accuracy |
+|-------|----------|------|----------|
+| `roughness_rn18_10w_adamw.pt` | ResNet18 | `scalograms_10w` + SMOTE | **93.3%** |
+| `roughness_effb0_10w_adamw.pt` | EfficientNet-B0 | `scalograms_10w` + SMOTE | 83.3% |
+
+SMOTE balanced Medium and Rough training classes from 9 runs each to 21 (matching Smooth). ResNet18 achieved 93.3% (56/60): 20/20 Smooth, 17/20 Medium, 19/20 Rough.
+
+---
+
 ## Commands
 
 All commands should be run from inside `cnn_model/`.

@@ -30,7 +30,9 @@ from scalogram import (
     analytic_morlet_cwt, build_rgb_image,
     FS, DOWNSAMPLE, F_MIN, F_MAX, N_FREQS, SIGMA, IMG_SIZE, CHANNELS,
 )
-from cnn_train import FEED_LABELS, FEED_TEST_RUNS, SPEED_LABELS, SPEED_TEST_RUNS, DOC_LABELS
+from cnn_train import (FEED_LABELS, FEED_TEST_RUNS, FEED_COARSE_LABELS,
+                        SPEED_LABELS, SPEED_TEST_RUNS,
+                        DOC_LABELS, RA_LABELS, RA_TEST_RUNS)
 
 SEED = 42
 
@@ -101,7 +103,8 @@ def main():
                         help="Synthetic interpolations to generate per same-class run pair")
     parser.add_argument("--n_windows",    type=int, default=10,
                         help="Windows per synthetic run (must match --n_windows in scalogram.py)")
-    parser.add_argument("--target",         default="feed", choices=["feed", "speed"],
+    parser.add_argument("--target",         default="feed",
+                        choices=["feed", "feed_coarse", "speed", "roughness"],
                         help="Which prediction target to generate synthetics for")
     parser.add_argument("--target_count",   type=int, default=None,
                         help="Override per-class target run count (default: majority class size)")
@@ -123,6 +126,16 @@ def main():
         all_labels = SPEED_LABELS
         test_runs  = SPEED_TEST_RUNS
         csv_name   = "smote_speed_labels.csv"
+        csv_fields = ["run", "label", "parent_a", "parent_b"]
+    elif args.target == "roughness":
+        all_labels = RA_LABELS
+        test_runs  = RA_TEST_RUNS
+        csv_name   = "smote_roughness_labels.csv"
+        csv_fields = ["run", "label", "parent_a", "parent_b"]
+    elif args.target == "feed_coarse":
+        all_labels = FEED_COARSE_LABELS
+        test_runs  = FEED_TEST_RUNS
+        csv_name   = "smote_feed_coarse_labels.csv"
         csv_fields = ["run", "label", "parent_a", "parent_b"]
     else:
         all_labels = FEED_LABELS
@@ -169,7 +182,10 @@ def main():
             run_a, run_b = next(pair_cycle)
             alpha = random.uniform(0.1, 0.9)
             syn   = interpolate_signals(class_signals[run_a], class_signals[run_b], alpha)
-            prefix = "smote_s" if args.target == "speed" else "smote_f"
+            prefix = ("smote_s"  if args.target == "speed"
+                      else "smote_r"  if args.target == "roughness"
+                      else "smote_fc" if args.target == "feed_coarse"
+                      else "smote_f")
             stem  = f"{prefix}{cls}_{idx}"
 
             save_windows(
@@ -177,7 +193,7 @@ def main():
                 DOWNSAMPLE, fs_eff, F_MIN, F_MAX, N_FREQS, SIGMA, IMG_SIZE,
                 freq_interleave=args.freq_interleave,
             )
-            if args.target == "speed":
+            if args.target in ("speed", "roughness", "feed_coarse"):
                 label_rows.append({"run": stem, "label": cls,
                                    "parent_a": run_a, "parent_b": run_b})
             else:

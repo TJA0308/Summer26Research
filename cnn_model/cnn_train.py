@@ -31,13 +31,13 @@ SPEED_LABELS = {
     "run43": 2, "run44": 2, "run45": 2,  # 3000 rpm  DOC=0.015
 }
 SPEED_NAMES = {0: "1500 rpm", 1: "2000 rpm", 2: "3000 rpm", 3: "4000 rpm", 4: "5000 rpm"}
-# 3 test runs per class, 1 per DOC level: 15 test total, 30 train total (6 per class)
+# 2 test runs per class (classes 0-3), 1 for class 4: 9 test total, 36 train total
 SPEED_TEST_RUNS = {
-    "run9",  "run22", "run39",  # class 0 (1500 rpm): DOC=0.030, 0.060, 0.015
-    "run12", "run27", "run40",  # class 1 (2000 rpm): DOC=0.030, 0.060, 0.015
-    "run15", "run28", "run45",  # class 2 (3000 rpm): DOC=0.030, 0.060, 0.015
-    "run2",  "run16", "run33",  # class 3 (4000 rpm): DOC=0.015, 0.030, 0.060
-    "run5",  "run20", "run36",  # class 4 (5000 rpm): DOC=0.015, 0.030, 0.060
+    "run9",  "run22",  # class 0 (1500 rpm): DOC=0.030, 0.060
+    "run12", "run27",  # class 1 (2000 rpm): DOC=0.030, 0.060
+    "run15", "run28",  # class 2 (3000 rpm): DOC=0.030, 0.060
+    "run2",  "run16",  # class 3 (4000 rpm): DOC=0.015, 0.030
+    "run5",  "run36",  # class 4 (5000 rpm): DOC=0.015, 0.060  → 10 test, 35 train
 }
 
 # ── Feed rate prediction ──────────────────────────────────────────────────
@@ -179,6 +179,28 @@ class ConditionedScalogramDataset(Dataset):
         return img, self.labels[idx], self.speed_labels[idx], self.doc_labels[idx]
 
 
+class MILDataset(Dataset):
+    """One item = all window images for one run. Returns (stacked_tensor [N,C,H,W], label)."""
+    def __init__(self, run_paths, run_labels, transform=None):
+        self.runs       = sorted(run_paths.keys())
+        self.run_paths  = run_paths
+        self.run_labels = run_labels
+        self.transform  = transform
+
+    def __len__(self):
+        return len(self.runs)
+
+    def __getitem__(self, idx):
+        run  = self.runs[idx]
+        imgs = []
+        for p in sorted(self.run_paths[run]):
+            img = Image.open(p).convert("RGB")
+            if self.transform:
+                img = self.transform(img)
+            imgs.append(img)
+        return torch.stack(imgs), self.run_labels[run]
+
+
 def load_split_conditioned(img_dir, label_map, test_runs, speed_map, doc_map):
     """Like load_split but also returns per-image speed and DOC labels."""
     tr_p, tr_l, tr_spd, tr_doc = [], [], [], []
@@ -277,6 +299,26 @@ def load_split(img_dir, label_map, test_runs, extra_label_map=None):
     return (train_paths, train_labels), (test_paths, test_labels)
 
 
+def load_split_mil(img_dir, label_map, test_runs, extra_label_map=None):
+    """Like load_split but groups paths by run: returns ({run:[paths]}, {run:label}) pairs."""
+    combined_map = {**label_map, **(extra_label_map or {})}
+    train_runs   = set(combined_map.keys()) - test_runs
+    tr_rp, tr_rl = {}, {}
+    te_rp, te_rl = {}, {}
+    for png in sorted(img_dir.glob("*.png")):
+        run   = png.stem.split("_w")[0]
+        label = combined_map.get(run)
+        if label is None:
+            continue
+        if run in test_runs:
+            te_rp.setdefault(run, []).append(png)
+            te_rl[run] = label
+        elif run in train_runs:
+            tr_rp.setdefault(run, []).append(png)
+            tr_rl[run] = label
+    return (tr_rp, tr_rl), (te_rp, te_rl)
+
+
 def build_transforms(augment):
     mean = [0.485, 0.456, 0.406]
     std  = [0.229, 0.224, 0.225]
@@ -332,6 +374,73 @@ class ConditionedResNet(nn.Module):
         return self.head(torch.cat([feats, speed_oh, doc_oh], dim=1))
 
 
+class MILModel(nn.Module):
+    """ResNet18 backbone + attention pooling over windows + classifier head."""
+    def __init__(self, num_classes, freeze_backbone=False, dropout=0.0):
+        super().__init__()
+        base     = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        feat_dim = base.fc.in_features  # 512
+        base.fc  = nn.Identity()
+        self.backbone  = base
+        self.attention = nn.Sequential(
+            nn.Linear(feat_dim, 128),
+            nn.Tanh(),
+            nn.Linear(128, 1),
+        )
+        self.classifier = (
+            nn.Sequential(nn.Dropout(dropout), nn.Linear(feat_dim, num_classes))
+            if dropout > 0 else nn.Linear(feat_dim, num_classes)
+        )
+        if freeze_backbone:
+            for p in self.backbone.parameters():
+                p.requires_grad = False
+
+    def forward(self, imgs):
+        # imgs: [N, 3, H, W]
+        feats  = self.backbone(imgs)              # [N, 512]
+        attn   = torch.softmax(self.attention(feats), dim=0)  # [N, 1]
+        pooled = (attn * feats).sum(0, keepdim=True)           # [1, 512]
+        return self.classifier(pooled)             # [1, num_classes]
+
+
+def train_epoch_mil(model, dataset, criterion, optimizer, device):
+    model.train()
+    total_loss, correct, n = 0.0, 0, 0
+    indices = list(range(len(dataset)))
+    random.shuffle(indices)
+    for idx in indices:
+        imgs, label = dataset[idx]
+        imgs    = imgs.to(device)
+        label_t = torch.tensor([label], device=device)
+        optimizer.zero_grad()
+        out  = model(imgs)
+        loss = criterion(out, label_t)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+        correct    += int(out.argmax(1).item() == label)
+        n          += 1
+    return total_loss / n, correct / n
+
+
+@torch.no_grad()
+def eval_epoch_mil(model, dataset, criterion, device):
+    model.eval()
+    total_loss, correct, n = 0.0, 0, 0
+    for idx in range(len(dataset)):
+        imgs, label = dataset[idx]
+        imgs    = imgs.to(device)
+        label_t = torch.tensor([label], device=device)
+        out  = model(imgs)
+        loss = criterion(out, label_t)
+        total_loss += loss.item()
+        correct    += int(out.argmax(1).item() == label)
+        n          += 1
+    if n == 0:
+        return 0.0, 0.0
+    return total_loss / n, correct / n
+
+
 def train_epoch_cond(model, loader, criterion, optimizer, device):
     model.train()
     total_loss, correct, n = 0.0, 0, 0
@@ -365,27 +474,34 @@ def eval_epoch_cond(model, loader, criterion, device):
 
 
 def build_model(backbone, num_classes, freeze_backbone, dropout=0.0):
+    def _head(in_features):
+        return (nn.Sequential(nn.Dropout(dropout), nn.Linear(in_features, num_classes))
+                if dropout > 0 else nn.Linear(in_features, num_classes))
+
     if backbone == "resnet18":
         model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-        in_features = model.fc.in_features
-        model.fc = (nn.Sequential(nn.Dropout(dropout), nn.Linear(in_features, num_classes))
-                    if dropout > 0 else nn.Linear(in_features, num_classes))
+        model.fc = _head(model.fc.in_features)
     elif backbone == "resnet50":
         model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
-        in_features = model.fc.in_features
-        model.fc = (nn.Sequential(nn.Dropout(dropout), nn.Linear(in_features, num_classes))
-                    if dropout > 0 else nn.Linear(in_features, num_classes))
+        model.fc = _head(model.fc.in_features)
     elif backbone == "efficientnet_b0":
         model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
-        in_features = model.classifier[1].in_features
-        model.classifier[1] = (nn.Sequential(nn.Dropout(dropout), nn.Linear(in_features, num_classes))
-                                if dropout > 0 else nn.Linear(in_features, num_classes))
+        model.classifier[1] = _head(model.classifier[1].in_features)
+    elif backbone == "efficientnet_b2":
+        model = models.efficientnet_b2(weights=models.EfficientNet_B2_Weights.DEFAULT)
+        model.classifier[1] = _head(model.classifier[1].in_features)
+    elif backbone == "convnext_tiny":
+        model = models.convnext_tiny(weights=models.ConvNeXt_Tiny_Weights.DEFAULT)
+        model.classifier[2] = _head(model.classifier[2].in_features)
+    elif backbone == "mobilenet_v3_large":
+        model = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.DEFAULT)
+        model.classifier[3] = _head(model.classifier[3].in_features)
     else:
         raise ValueError(f"Unknown backbone: {backbone}")
 
     if freeze_backbone:
-        for name, p in model.named_parameters():
-            if "fc" not in name and "classifier" not in name:
+        for pname, p in model.named_parameters():
+            if "fc" not in pname and "classifier" not in pname:
                 p.requires_grad = False
 
     return model
@@ -394,20 +510,33 @@ def build_model(backbone, num_classes, freeze_backbone, dropout=0.0):
 def build_scheduler(name, optimizer, epochs):
     if name == "cosine":
         return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    elif name == "cosine_warm":
+        return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=max(10, epochs // 3))
     elif name == "step":
         return torch.optim.lr_scheduler.StepLR(optimizer, step_size=max(1, epochs // 3), gamma=0.1)
     else:  # none
         return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda e: 1.0)
 
 
-def train_epoch(model, loader, criterion, optimizer, device):
+def mixup_batch(imgs, labels, alpha):
+    lam = float(np.random.beta(alpha, alpha)) if alpha > 0 else 1.0
+    idx = torch.randperm(imgs.size(0))
+    return lam * imgs + (1 - lam) * imgs[idx], labels, labels[idx], lam
+
+
+def train_epoch(model, loader, criterion, optimizer, device, mixup_alpha=0.0):
     model.train()
     total_loss, correct, n = 0.0, 0, 0
     for imgs, labels in loader:
         imgs, labels = imgs.to(device), labels.to(device)
+        if mixup_alpha > 0:
+            imgs, y_a, y_b, lam = mixup_batch(imgs, labels, mixup_alpha)
+            out  = model(imgs)
+            loss = lam * criterion(out, y_a) + (1 - lam) * criterion(out, y_b)
+        else:
+            out  = model(imgs)
+            loss = criterion(out, labels)
         optimizer.zero_grad()
-        out  = model(imgs)
-        loss = criterion(out, labels)
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * len(labels)
@@ -430,6 +559,31 @@ def eval_epoch(model, loader, criterion, device):
     return total_loss / n, correct / n
 
 
+@torch.no_grad()
+def eval_epoch_tta(model, test_paths, test_labels, device, n_aug=8):
+    """Test-time augmentation: average predictions over n_aug views."""
+    mean = [0.485, 0.456, 0.406]
+    std  = [0.229, 0.224, 0.225]
+    tta_tf = transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(brightness=0.15, contrast=0.15),
+        transforms.ToTensor(),
+        transforms.Normalize(mean, std),
+    ])
+    base_tf = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    model.eval()
+    correct, n = 0, 0
+    for path, label in zip(test_paths, test_labels):
+        img = Image.open(path).convert("RGB")
+        logits = [model(base_tf(img).unsqueeze(0).to(device))]
+        for _ in range(n_aug - 1):
+            logits.append(model(tta_tf(img).unsqueeze(0).to(device)))
+        avg = torch.stack(logits).mean(0)
+        correct += int(avg.argmax(1).item() == label)
+        n += 1
+    return correct / n if n > 0 else 0.0
+
+
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--img_dir",      required=True,            help="Folder of scalogram PNGs")
@@ -441,7 +595,8 @@ def main():
     parser.add_argument("--batch",        type=int,   default=8,    help="Batch size")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="L2 regularisation strength")
     parser.add_argument("--backbone",     default="resnet18",
-                        choices=["resnet18", "resnet50", "efficientnet_b0"],
+                        choices=["resnet18", "resnet50", "efficientnet_b0", "efficientnet_b2",
+                                 "convnext_tiny", "mobilenet_v3_large"],
                         help="Pretrained backbone architecture")
     parser.add_argument("--freeze",       action="store_true",
                         help="Freeze backbone weights, train classification head only")
@@ -449,7 +604,7 @@ def main():
                         choices=["none", "light", "strong"],
                         help="Data augmentation strength applied to training images")
     parser.add_argument("--scheduler",    default="cosine",
-                        choices=["cosine", "step", "none"],
+                        choices=["cosine", "cosine_warm", "step", "none"],
                         help="Learning rate schedule")
     parser.add_argument("--save",         default="best_model.pt",  help="Path to save best model")
     parser.add_argument("--checkpoint",   default=None,             help="Load weights from this .pt file before training")
@@ -459,6 +614,18 @@ def main():
                         help="Cascade mode: concatenate speed+DOC one-hot vectors with image features before classifying feed")
     parser.add_argument("--kfold",         type=int, default=1,
                         help="K-fold cross-validation (1=fixed split, 5=5-fold CV)")
+    parser.add_argument("--mil",           action="store_true",
+                        help="Multiple Instance Learning: loss at run level via attention pooling over windows")
+    parser.add_argument("--optimizer",     default="adam", choices=["adam", "adamw"],
+                        help="Optimizer: adam or adamw (adamw adds decoupled weight decay)")
+    parser.add_argument("--label_smooth",  type=float, default=0.0,
+                        help="Label smoothing factor for CrossEntropyLoss (0=off, try 0.05-0.15)")
+    parser.add_argument("--mixup",         type=float, default=0.0,
+                        help="MixUp alpha (0=off, try 0.2-0.4)")
+    parser.add_argument("--tta",           action="store_true",
+                        help="Apply test-time augmentation (8 augmented views averaged at inference)")
+    parser.add_argument("--extra_img_dir", default=None,
+                        help="Additional scalogram directory merged into training set (e.g. scalograms_10w_fi)")
     args = parser.parse_args()
 
     seed_everything(SEED)
@@ -584,8 +751,103 @@ def main():
                 print(f"  class {c} ({name}): {correct}/{len(idx)}{detail}")
         return
 
+    if args.mil:
+        smote_map = {}
+        if args.target in ("feed", "feed_coarse"):
+            smote_map = load_smote_map(img_dir)
+            if smote_map:
+                if args.target == "feed_coarse":
+                    smote_map = {r: lbl // 2 for r, lbl in smote_map.items()}
+                print(f"  SMOTE: {len(smote_map)} synthetic runs loaded from smote_labels.csv")
+        elif args.target == "speed":
+            smote_map = load_smote_map(img_dir, "smote_speed_labels.csv")
+            if smote_map:
+                print(f"  SMOTE: {len(smote_map)} synthetic runs loaded from smote_speed_labels.csv")
+
+        (tr_rp, tr_rl), (te_rp, te_rl) = load_split_mil(img_dir, label_map, test_runs, smote_map)
+
+        print(f"\nTarget: {args.target} [MIL]  |  Train: {len(tr_rp)} runs | Test: {len(te_rp)} runs")
+        for c, name in class_names.items():
+            tr_c = sum(1 for l in tr_rl.values() if l == c)
+            te_c = sum(1 for l in te_rl.values() if l == c)
+            print(f"  class {c} ({name}): {tr_c} train runs / {te_c} test runs")
+
+        if not tr_rp:
+            print("No training images found. Run scalogram.py first.")
+            return
+        if not te_rp:
+            print(f"WARNING: no test images found for test runs: {test_runs}")
+            print("Check that scalogram PNGs exist for these runs in", img_dir)
+            return
+
+        if args.save == "best_model.pt":
+            args.save = f"best_model_mil_{args.target}.pt"
+
+        print(f"\nConfig: backbone=resnet18+attn  lr={args.lr}  wd={args.weight_decay}"
+              f"  epochs={args.epochs}  augment={args.augment}"
+              f"  scheduler={args.scheduler}  freeze={args.freeze}")
+
+        train_tf, val_tf = build_transforms(args.augment)
+        train_ds = MILDataset(tr_rp, tr_rl, train_tf)
+        test_ds  = MILDataset(te_rp, te_rl, val_tf)
+
+        model = MILModel(num_classes, freeze_backbone=args.freeze, dropout=args.dropout).to(device)
+        if args.weighted_loss:
+            counts  = np.bincount(list(tr_rl.values()), minlength=num_classes).astype(np.float32)
+            weights = torch.tensor(1.0 / np.maximum(counts, 1)).to(device)
+            weights = weights / weights.sum() * num_classes
+            criterion = nn.CrossEntropyLoss(weight=weights)
+            print(f"Class weights: {weights.cpu().numpy().round(3)}")
+        else:
+            criterion = nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=args.lr, weight_decay=args.weight_decay,
+        )
+        scheduler = build_scheduler(args.scheduler, optimizer, args.epochs)
+
+        print(f"\n{'Epoch':>5} {'Train Loss':>10} {'Train Acc':>10} {'Test Loss':>10} {'Test Acc':>10}")
+        print("-" * 52)
+
+        best_test_acc = 0.0
+        for epoch in range(1, args.epochs + 1):
+            tr_loss, tr_acc = train_epoch_mil(model, train_ds, criterion, optimizer, device)
+            te_loss, te_acc = eval_epoch_mil(model, test_ds,  criterion, device)
+            scheduler.step()
+            if te_acc > best_test_acc:
+                best_test_acc = te_acc
+                torch.save(model.state_dict(), args.save)
+            print(f"{epoch:>5} {tr_loss:>10.4f} {tr_acc:>10.3f} {te_loss:>10.4f} {te_acc:>10.3f}", flush=True)
+
+        print(f"\nBest test accuracy: {best_test_acc:.3f}")
+        print(f"Model saved to {args.save}")
+
+        model.load_state_dict(torch.load(args.save, map_location=device))
+        model.eval()
+        print("\nPer-run test results (best model):")
+        all_preds, all_true = [], []
+        with torch.no_grad():
+            for i in range(len(test_ds)):
+                imgs, label = test_ds[i]
+                pred = model(imgs.to(device)).argmax(1).item()
+                run  = test_ds.runs[i]
+                status = "OK" if pred == label else "WRONG"
+                print(f"  {run:6s}  true={class_names[label]:10s}  pred={class_names[pred]:10s}  {status}")
+                all_preds.append(pred); all_true.append(label)
+        print("\nPer-class accuracy:")
+        for c, name in class_names.items():
+            idx = [i for i, l in enumerate(all_true) if l == c]
+            if idx:
+                correct  = sum(all_preds[i] == all_true[i] for i in idx)
+                wrong_as = [class_names[all_preds[i]] for i in idx if all_preds[i] != all_true[i]]
+                detail   = f"  predicted as {wrong_as}" if wrong_as else ""
+                print(f"  class {c} ({name}): {correct}/{len(idx)}{detail}")
+        return
+
     if args.kfold > 1:
-        smote_csv = ("smote_speed_labels.csv" if args.target == "speed"
+        smote_csv = ("smote_speed_labels.csv"        if args.target == "speed"
+                     else "smote_roughness_labels.csv"   if args.target == "roughness"
+                     else "smote_feed_coarse_labels.csv" if args.target == "feed_coarse"
                      else "smote_labels.csv")
         smote_full  = load_smote_full(img_dir, smote_csv)
         splits      = stratified_kfold(label_map, args.kfold)
@@ -649,18 +911,40 @@ def main():
         return
 
     smote_map = {}
-    if args.target in ("feed", "feed_coarse"):
+    if args.target == "feed":
         smote_map = load_smote_map(img_dir)
         if smote_map:
-            if args.target == "feed_coarse":
-                smote_map = {run: lbl // 2 for run, lbl in smote_map.items()}
             print(f"  SMOTE: {len(smote_map)} synthetic runs loaded from smote_labels.csv")
+    elif args.target == "feed_coarse":
+        smote_map = load_smote_map(img_dir, "smote_feed_coarse_labels.csv")
+        if smote_map:
+            print(f"  SMOTE: {len(smote_map)} synthetic runs loaded from smote_feed_coarse_labels.csv")
     elif args.target == "speed":
         smote_map = load_smote_map(img_dir, "smote_speed_labels.csv")
         if smote_map:
             print(f"  SMOTE: {len(smote_map)} synthetic runs loaded from smote_speed_labels.csv")
+    elif args.target == "roughness":
+        smote_map = load_smote_map(img_dir, "smote_roughness_labels.csv")
+        if smote_map:
+            print(f"  SMOTE: {len(smote_map)} synthetic runs loaded from smote_roughness_labels.csv")
 
     (tr_p, tr_l), (te_p, te_l) = load_split(img_dir, label_map, test_runs, smote_map)
+
+    # Optionally merge a second scalogram directory (extra training images, same test split)
+    if args.extra_img_dir:
+        extra_dir = Path(args.extra_img_dir)
+        extra_smote = {}
+        if args.target == "feed":
+            extra_smote = load_smote_map(extra_dir)
+        elif args.target == "feed_coarse":
+            extra_smote = load_smote_map(extra_dir, "smote_feed_coarse_labels.csv")
+        elif args.target == "speed":
+            extra_smote = load_smote_map(extra_dir, "smote_speed_labels.csv")
+        elif args.target == "roughness":
+            extra_smote = load_smote_map(extra_dir, "smote_roughness_labels.csv")
+        (ex_tr_p, ex_tr_l), _ = load_split(extra_dir, label_map, test_runs, extra_smote)
+        tr_p.extend(ex_tr_p); tr_l.extend(ex_tr_l)
+        print(f"  Extra dir: {extra_dir.name} added {len(ex_tr_p)} training images")
 
     print(f"\nTarget: {args.target}  |  Train: {len(tr_p)} images | Test: {len(te_p)} images")
     for c, name in class_names.items():
@@ -672,7 +956,9 @@ def main():
 
     print(f"\nConfig: backbone={args.backbone}  lr={args.lr}  wd={args.weight_decay}"
           f"  batch={args.batch}  epochs={args.epochs}"
-          f"  augment={args.augment}  scheduler={args.scheduler}  freeze={args.freeze}")
+          f"  augment={args.augment}  scheduler={args.scheduler}  freeze={args.freeze}"
+          f"  optimizer={args.optimizer}  label_smooth={args.label_smooth}"
+          f"  mixup={args.mixup}  tta={args.tta}")
 
     train_tf, val_tf = build_transforms(args.augment)
     train_ds = ScalogramDataset(tr_p, tr_l, train_tf)
@@ -688,11 +974,13 @@ def main():
         counts = np.bincount(tr_l, minlength=num_classes).astype(np.float32)
         weights = torch.tensor(1.0 / np.maximum(counts, 1)).to(device)
         weights = weights / weights.sum() * num_classes
-        criterion = nn.CrossEntropyLoss(weight=weights)
+        criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=args.label_smooth)
         print(f"Class weights: {weights.cpu().numpy().round(3)}")
     else:
-        criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(
+        criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smooth)
+
+    opt_cls = torch.optim.AdamW if args.optimizer == "adamw" else torch.optim.Adam
+    optimizer = opt_cls(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=args.lr,
         weight_decay=args.weight_decay,
@@ -704,13 +992,22 @@ def main():
 
     best_test_acc = 0.0
     for epoch in range(1, args.epochs + 1):
-        tr_loss, tr_acc = train_epoch(model, train_dl, criterion, optimizer, device)
+        tr_loss, tr_acc = train_epoch(model, train_dl, criterion, optimizer, device, args.mixup)
         te_loss, te_acc = eval_epoch(model, test_dl,  criterion, device)
         scheduler.step()
         if te_acc > best_test_acc:
             best_test_acc = te_acc
             torch.save(model.state_dict(), args.save)
         print(f"{epoch:>5} {tr_loss:>10.4f} {tr_acc:>10.3f} {te_loss:>10.4f} {te_acc:>10.3f}", flush=True)
+
+    # TTA final eval on best model
+    if args.tta:
+        model.load_state_dict(torch.load(args.save, map_location=device))
+        tta_acc = eval_epoch_tta(model, te_p, te_l, device, n_aug=8)
+        print(f"\nTTA accuracy (8 views): {tta_acc:.3f}")
+        if tta_acc > best_test_acc:
+            best_test_acc = tta_acc
+            print(f"TTA improved best accuracy to {best_test_acc:.3f}")
 
     print(f"\nBest test accuracy: {best_test_acc:.3f}")
     print(f"Model saved to {args.save}")
