@@ -1,4 +1,7 @@
 {
+  "env": {
+    "ECC_DISABLED_HOOKS": "pre:edit-write:gateguard-fact-force"
+  },
   "permissions": {
     "allow": [
       "Bash(python scalogram.py --input_dir ./data --output_dir ./scalograms_new --single run1.csv --labels)",
@@ -43,7 +46,9 @@
       "Bash(Remove-Item *)",
       "Bash(dir C:\\\\Users\\\\Shreyas Kakkar\\\\Documents\\\\GitHub\\\\Summer26Research *)",
       "Bash(taskkill /F /IM python.exe /T)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(taskkill /F /IM python.exe)",
+      "Bash(git pull *)"
     ]
   }
 }

@@ -848,6 +848,7 @@ def main():
         smote_csv = ("smote_speed_labels.csv"        if args.target == "speed"
                      else "smote_roughness_labels.csv"   if args.target == "roughness"
                      else "smote_feed_coarse_labels.csv" if args.target == "feed_coarse"
+                     else "smote_doc_labels.csv"         if args.target == "doc"
                      else "smote_labels.csv")
         smote_full  = load_smote_full(img_dir, smote_csv)
         splits      = stratified_kfold(label_map, args.kfold)
@@ -927,6 +928,10 @@ def main():
         smote_map = load_smote_map(img_dir, "smote_roughness_labels.csv")
         if smote_map:
             print(f"  SMOTE: {len(smote_map)} synthetic runs loaded from smote_roughness_labels.csv")
+    elif args.target == "doc":
+        smote_map = load_smote_map(img_dir, "smote_doc_labels.csv")
+        if smote_map:
+            print(f"  SMOTE: {len(smote_map)} synthetic runs loaded from smote_doc_labels.csv")
 
     (tr_p, tr_l), (te_p, te_l) = load_split(img_dir, label_map, test_runs, smote_map)
 

@@ -32,7 +32,7 @@ from scalogram import (
 )
 from cnn_train import (FEED_LABELS, FEED_TEST_RUNS, FEED_COARSE_LABELS,
                         SPEED_LABELS, SPEED_TEST_RUNS,
-                        DOC_LABELS, RA_LABELS, RA_TEST_RUNS)
+                        DOC_LABELS, DOC_TEST_RUNS, RA_LABELS, RA_TEST_RUNS)
 
 SEED = 42
 
@@ -104,7 +104,7 @@ def main():
     parser.add_argument("--n_windows",    type=int, default=10,
                         help="Windows per synthetic run (must match --n_windows in scalogram.py)")
     parser.add_argument("--target",         default="feed",
-                        choices=["feed", "feed_coarse", "speed", "roughness"],
+                        choices=["feed", "feed_coarse", "speed", "roughness", "doc"],
                         help="Which prediction target to generate synthetics for")
     parser.add_argument("--target_count",   type=int, default=None,
                         help="Override per-class target run count (default: majority class size)")
@@ -136,6 +136,11 @@ def main():
         all_labels = FEED_COARSE_LABELS
         test_runs  = FEED_TEST_RUNS
         csv_name   = "smote_feed_coarse_labels.csv"
+        csv_fields = ["run", "label", "parent_a", "parent_b"]
+    elif args.target == "doc":
+        all_labels = DOC_LABELS
+        test_runs  = DOC_TEST_RUNS
+        csv_name   = "smote_doc_labels.csv"
         csv_fields = ["run", "label", "parent_a", "parent_b"]
     else:
         all_labels = FEED_LABELS
@@ -185,6 +190,7 @@ def main():
             prefix = ("smote_s"  if args.target == "speed"
                       else "smote_r"  if args.target == "roughness"
                       else "smote_fc" if args.target == "feed_coarse"
+                      else "smote_d"  if args.target == "doc"
                       else "smote_f")
             stem  = f"{prefix}{cls}_{idx}"
 
@@ -193,7 +199,7 @@ def main():
                 DOWNSAMPLE, fs_eff, F_MIN, F_MAX, N_FREQS, SIGMA, IMG_SIZE,
                 freq_interleave=args.freq_interleave,
             )
-            if args.target in ("speed", "roughness", "feed_coarse"):
+            if args.target in ("speed", "roughness", "feed_coarse", "doc"):
                 label_rows.append({"run": stem, "label": cls,
                                    "parent_a": run_a, "parent_b": run_b})
             else:
