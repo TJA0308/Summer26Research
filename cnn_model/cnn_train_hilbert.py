@@ -108,11 +108,20 @@ def load_split_npy(img_dir, label_map, test_runs):
 
 # ── Model ──────────────────────────────────────────────────────────────────
 
+def _patch_first_conv(old_conv, new_conv):
+    """Copy pretrained 3-ch weights into new_conv; seed 4th channel from their average."""
+    with torch.no_grad():
+        new_conv.weight[:, :3] = old_conv.weight
+        new_conv.weight[:, 3]  = old_conv.weight.mean(dim=1)
+        if old_conv.bias is not None and new_conv.bias is not None:
+            new_conv.bias.copy_(old_conv.bias)
+
+
 def build_model_4ch(backbone, num_classes, freeze_backbone=False, dropout=0.0):
     """
     Build a pretrained backbone with its first conv patched to accept 4 channels.
-    Pretrained weights are loaded first, then the first conv is replaced — the
-    rest of the network keeps ImageNet initialisation.
+    The first 3 channels keep their ImageNet weights; the 4th channel is seeded
+    from the channel-wise average of those weights so the full network starts warm.
     """
     def _head(in_features):
         return (nn.Sequential(nn.Dropout(dropout), nn.Linear(in_features, num_classes))
@@ -120,26 +129,34 @@ def build_model_4ch(backbone, num_classes, freeze_backbone=False, dropout=0.0):
 
     if backbone == "resnet18":
         model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-        model.conv1 = nn.Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        new_conv = nn.Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        _patch_first_conv(model.conv1, new_conv)
+        model.conv1 = new_conv
         model.fc = _head(model.fc.in_features)
 
     elif backbone == "resnet50":
         model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
-        model.conv1 = nn.Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        new_conv = nn.Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        _patch_first_conv(model.conv1, new_conv)
+        model.conv1 = new_conv
         model.fc = _head(model.fc.in_features)
 
     elif backbone == "efficientnet_b0":
         model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
         c = model.features[0][0]
-        model.features[0][0] = nn.Conv2d(4, c.out_channels, kernel_size=c.kernel_size,
-                                          stride=c.stride, padding=c.padding, bias=False)
+        new_conv = nn.Conv2d(4, c.out_channels, kernel_size=c.kernel_size,
+                             stride=c.stride, padding=c.padding, bias=False)
+        _patch_first_conv(c, new_conv)
+        model.features[0][0] = new_conv
         model.classifier[1] = _head(model.classifier[1].in_features)
 
     elif backbone == "convnext_tiny":
         model = models.convnext_tiny(weights=models.ConvNeXt_Tiny_Weights.DEFAULT)
         c = model.features[0][0]
-        model.features[0][0] = nn.Conv2d(4, c.out_channels, kernel_size=c.kernel_size,
-                                          stride=c.stride, padding=c.padding)
+        new_conv = nn.Conv2d(4, c.out_channels, kernel_size=c.kernel_size,
+                             stride=c.stride, padding=c.padding)
+        _patch_first_conv(c, new_conv)
+        model.features[0][0] = new_conv
         model.classifier[2] = _head(model.classifier[2].in_features)
 
     else:
