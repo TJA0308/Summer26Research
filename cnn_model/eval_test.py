@@ -20,6 +20,7 @@ from cnn_train import (
     FEED_LABELS, FEED_TEST_RUNS, FEED_NAMES,
     FEED_COARSE_LABELS, FEED_COARSE_TEST_RUNS, FEED_COARSE_NAMES,
     RA_LABELS, RA_TEST_RUNS, RA_NAMES,
+    DOC_LABELS, DOC_TEST_RUNS, DOC_NAMES,
     build_model,
 )
 
@@ -336,6 +337,30 @@ def main():
             ROOT / "exp_models" / "feed_coarse_effb0_10w_adamw.pt",
             "efficientnet_b0", 3, "feed_coarse",
             IMG_10W, FEED_COARSE_LABELS, FEED_COARSE_TEST_RUNS, FEED_COARSE_NAMES,
+        ),
+        (
+            "feed_cnxt_10w",
+            ROOT / "feed_cnxt_10w_adamw.pt",
+            "convnext_tiny", 6, "feed",
+            IMG_10W, FEED_LABELS, FEED_TEST_RUNS, FEED_NAMES,
+        ),
+        (
+            "feed_coarse_cnxt_10w",
+            ROOT / "feed_coarse_cnxt_10w_adamw.pt",
+            "convnext_tiny", 3, "feed_coarse",
+            IMG_10W, FEED_COARSE_LABELS, FEED_COARSE_TEST_RUNS, FEED_COARSE_NAMES,
+        ),
+        (
+            "doc_resnet18_10w",
+            ROOT / "best_model_doc_resnet18.pt",
+            "resnet18", 3, "doc",
+            IMG_10W, DOC_LABELS, DOC_TEST_RUNS, DOC_NAMES,
+        ),
+        (
+            "doc_convnext_10w",
+            ROOT / "best_model_doc_convnext.pt",
+            "convnext_tiny", 3, "doc",
+            IMG_10W, DOC_LABELS, DOC_TEST_RUNS, DOC_NAMES,
         ),
     ]
 

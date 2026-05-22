@@ -115,16 +115,32 @@ python experiment_runner.py --target both      # speed + feed (default)
 
 ### Feed Rate Results (6-class, AdamW, cosine LR, 20 epochs, batch=16)
 
-| Model | Backbone | Data | Accuracy |
-|-------|----------|------|----------|
-| `feed_rn18_10w_adamw.pt` | ResNet18 | `scalograms_10w` + SMOTE | **48.3%** |
-| `feed_effb0_10w_adamw.pt` | EfficientNet-B0 | `scalograms_10w` + SMOTE | 38.3% |
-| `feed_effb0_10w_fi_adamw.pt` | EfficientNet-B0 | freq-interleave scalograms | 38.3% |
-| `feed_cnxt_10w_adamw.pt` | ConvNeXt-Tiny | `scalograms_10w` + SMOTE | 35.0% |
-| `feed_effb0_both_adamw.pt` | EfficientNet-B0 | both dirs merged (2x data) | 31.7% |
-| `feed_effb0_10w_mixup_adamw.pt` | EfficientNet-B0 | + MixUp alpha=0.2 | 16.7% |
+| Model | Backbone | Window Acc | Run MV Acc |
+|-------|----------|-----------|-----------|
+| `feed_rn18_10w_adamw.pt` | ResNet18 | **48.3%** | **50.0%** |
+| `feed_cnxt_10w_adamw.pt` | ConvNeXt-Tiny | 43.3% | 50.0% |
+| `feed_effb0_10w_adamw.pt` | EfficientNet-B0 | 38.3% | 50.0% |
 
-Classes 1 (4 mm/rev), 3 (6 mm/rev), 4 (7 mm/rev) collapse to adjacent class predictions across all architectures. No experiment reached 70%.
+Classes 4 mm/rev, 6 mm/rev, and 7 mm/rev achieve 0 correct predictions across all three architectures. The extreme classes (3 and 8 mm/rev) are reliably identified. All architectures hit the same 50% run-level ceiling — the failure is in the signal, not the model.
+
+### DOC Results (3-class: 0.015/0.030/0.060 mm, AdamW, cosine LR, 20 epochs, batch=16)
+
+| Model | Backbone | Window Acc | Run MV Acc | Soft Avg |
+|-------|----------|-----------|-----------|----------|
+| `best_model_doc_resnet18.pt` | ResNet18 | **82.2%** | **88.9%** | **88.9%** |
+| `best_model_doc_convnext.pt` | ConvNeXt-Tiny | 77.8% | 77.8% | 77.8% |
+
+ResNet18 (8/9 runs correct) outperforms ConvNeXt-Tiny (7/9) on DOC. Both perfectly separate 0.015 mm. The single ResNet18 failure is run36 (5000 rpm, 0.060 mm → predicted 0.030 mm, p=0.943). ConvNeXt-Tiny additionally fails on run19 (5000 rpm, 0.030 mm), with both failures concentrated at 5000 rpm where the DOC signal is partially masked by high-speed harmonics.
+
+### Feed Coarse Results (3-class: low/med/high, AdamW, cosine LR, 20 epochs, batch=16)
+
+| Model | Backbone | Window Acc | Run MV Acc |
+|-------|----------|-----------|-----------|
+| `feed_coarse_cnxt_10w_adamw.pt` | ConvNeXt-Tiny | **80.0%** | **83.3%** |
+| `feed_coarse_rn18_10w_adamw.pt` | ResNet18 | 66.7% | 66.7% |
+| `feed_coarse_effb0_10w_adamw.pt` | EfficientNet-B0 | 66.7% | 66.7% |
+
+ConvNeXt-Tiny is the clear winner on coarse feed classification (83.3% vs 66.7% for both other architectures). It correctly classifies run5 (7 mm/rev, high) that ResNet18 and EfficientNet-B0 both fail on. Its single failure is run13 (4 mm/rev, low) predicted as high with p=0.973 — a wider error than ResNet/EfficientNet which predict medium. Medium class is perfectly separated by all architectures.
 
 ### Roughness Results (3-class, AdamW, cosine LR, 20 epochs, batch=16)
 

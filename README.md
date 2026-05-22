@@ -38,7 +38,7 @@ Five models are saved in the project root:
 
 ## Multi-Architecture Experiments (10-window CWT + SMOTE)
 
-Systematic search over backbone architectures and data strategies using 10-window scalograms (`scalograms_10w`) with signal-space SMOTE augmentation. Models saved in `exp_models/` (speed models saved to project root). All accuracy figures are holdout test-only — test runs were never used to update weights. See `RESULTS.md` for confusion matrices and window-level breakdowns.
+Systematic search over backbone architectures and data strategies using 10-window scalograms (`scalograms_10w`) with signal-space SMOTE augmentation. Models saved in `exp_models/` (speed and DOC models saved to project root). All accuracy figures are holdout test-only — test runs were never used to update weights. See `RESULTS.md` for confusion matrices and window-level breakdowns.
 
 ### Spindle Speed (5-class, 35 train / 10 test runs)
 
@@ -124,12 +124,54 @@ Both models get all 10 runs correct under both methods. The probability scores r
 
 ---
 
+### Depth of Cut (3-class: 0.015 / 0.030 / 0.060 mm, 36 train / 9 test runs)
+
+| Model file | Backbone | Window Acc | Run Majority-Vote | Soft Avg |
+|------------|----------|-----------|-------------------|----------|
+| `best_model_doc_resnet18.pt` | ResNet18 | **82.2%** | **88.9%** | **88.9%** |
+| `best_model_doc_convnext.pt` | ConvNeXt-Tiny | 77.8% | 77.8% | 77.8% |
+
+**SMOTE augmentation** (`smote_doc_labels.csv`) — applied before training to balance the DOC classes.
+
+**Window majority-vote and whole-run probability averaging** — `best_model_doc_resnet18.pt` (ResNet18, best):
+
+| Run | True | Predicted | Result | Window votes / Avg prob (top 2) |
+|-----|------|-----------|--------|---------------------------------|
+| run1  | 0.015 mm | 0.015 mm | **OK**    | 0.015×10 / 0.015=0.974, 0.030=0.016 |
+| run5  | 0.015 mm | 0.015 mm | **OK**    | 0.015×10 / 0.015=1.000, 0.030=0.000 |
+| run43 | 0.015 mm | 0.015 mm | **OK**    | 0.015×10 / 0.015=0.998, 0.030=0.002 |
+| run7  | 0.030 mm | 0.030 mm | **OK**    | 0.030×10 / 0.030=0.990, 0.015=0.009 |
+| run14 | 0.030 mm | 0.030 mm | **OK**    | 0.030×10 / 0.030=0.884, 0.015=0.089 |
+| run19 | 0.030 mm | 0.030 mm | **OK**    | 0.030×6, 0.015×4 / 0.030=0.558, 0.015=0.389 |
+| run22 | 0.060 mm | 0.060 mm | **OK**    | 0.060×9, 0.015×1 / 0.060=0.848, 0.015=0.104 |
+| run29 | 0.060 mm | 0.060 mm | **OK**    | 0.060×9, 0.015×1 / 0.060=0.885, 0.015=0.092 |
+| run36 | 0.060 mm | 0.030 mm | **WRONG** | 0.030×10 / 0.030=0.943, 0.060=0.055 |
+
+**Window majority-vote and whole-run probability averaging** — `best_model_doc_convnext.pt` (ConvNeXt-Tiny):
+
+| Run | True | Predicted | Result | Window votes / Avg prob (top 2) |
+|-----|------|-----------|--------|---------------------------------|
+| run1  | 0.015 mm | 0.015 mm | **OK**    | 0.015×10 / 0.015=0.747, 0.060=0.140 |
+| run5  | 0.015 mm | 0.015 mm | **OK**    | 0.015×10 / 0.015=0.857, 0.060=0.084 |
+| run43 | 0.015 mm | 0.015 mm | **OK**    | 0.015×10 / 0.015=0.510, 0.060=0.301 |
+| run7  | 0.030 mm | 0.030 mm | **OK**    | 0.030×10 / 0.030=0.884, 0.060=0.112 |
+| run14 | 0.030 mm | 0.030 mm | **OK**    | 0.030×10 / 0.030=0.820, 0.060=0.146 |
+| run19 | 0.030 mm | 0.015 mm | **WRONG** | 0.015×10 / 0.015=0.496, 0.060=0.307 |
+| run22 | 0.060 mm | 0.060 mm | **OK**    | 0.060×10 / 0.060=0.832, 0.030=0.147 |
+| run29 | 0.060 mm | 0.060 mm | **OK**    | 0.060×10 / 0.060=0.958, 0.030=0.041 |
+| run36 | 0.060 mm | 0.015 mm | **WRONG** | 0.015×10 / 0.015=0.373, 0.060=0.330 |
+
+ResNet18 makes a single confident failure on run36 (5000 rpm, 0.060 mm — p=0.943 for 0.030 mm). ConvNeXt-Tiny fails on both 5000 rpm runs in the medium and deep DOC classes (run19 and run36). The 0.015 mm class is perfectly separated by both models.
+
+---
+
 ### Feed Rate Fine-Grained (6-class, 39 train / 6 test runs)
 
-| Model file | Backbone | Window Acc | Run Majority-Vote |
-|------------|----------|-----------|-------------------|
-| `exp_models/feed_rn18_10w_adamw.pt` | ResNet18 | **48.3%** | 50.0% |
-| `exp_models/feed_effb0_10w_adamw.pt` | EfficientNet-B0 | 38.3% | 50.0% |
+| Model file | Backbone | Window Acc | Run Majority-Vote | Soft Avg |
+|------------|----------|-----------|-------------------|----------|
+| `exp_models/feed_rn18_10w_adamw.pt` | ResNet18 | **48.3%** | 50.0% | 50.0% |
+| `feed_cnxt_10w_adamw.pt` | ConvNeXt-Tiny | 43.3% | 50.0% | 50.0% |
+| `exp_models/feed_effb0_10w_adamw.pt` | EfficientNet-B0 | 38.3% | 50.0% | 50.0% |
 
 **SMOTE augmentation** (`smote_labels.csv`) — 27 synthetic runs added:
 
@@ -145,7 +187,7 @@ Both models get all 10 runs correct under both methods. The probability scores r
 
 Pre-SMOTE the dataset was severely imbalanced: 8 mm/rev had only 2 training runs (20 images) vs 11 for 5 mm/rev (110 images). SMOTE brought all 6 classes to 11 runs / 110 images by adding up to 9 synthetic runs to the most underrepresented class.
 
-**Window majority-vote** — `feed_rn18_10w_adamw.pt` (ResNet18, best):
+**Window majority-vote** — `feed_rn18_10w_adamw.pt` (ResNet18, best window acc):
 
 | Run | True | Predicted | Result | Window votes |
 |-----|------|-----------|--------|--------------|
@@ -166,6 +208,28 @@ Pre-SMOTE the dataset was severely imbalanced: 8 mm/rev had only 2 training runs
 | run17 | 6 mm/rev | 5 mm/rev  | **WRONG** | 5=0.961, 7=0.029 |
 | run5  | 7 mm/rev | 6 mm/rev  | **WRONG** | 6=0.979, 8=0.021 |
 | run36 | 8 mm/rev | 8 mm/rev  | **OK**    | 8=0.888, 5=0.064 |
+
+**Window majority-vote** — `feed_cnxt_10w_adamw.pt` (ConvNeXt-Tiny):
+
+| Run | True | Predicted | Result | Window votes |
+|-----|------|-----------|--------|--------------|
+| run25 | 3 mm/rev | 3 mm/rev | **OK**    | 3×9, 5×1 |
+| run13 | 4 mm/rev | 6 mm/rev  | **WRONG** | 6×10 |
+| run31 | 5 mm/rev | 5 mm/rev  | **OK**    | 5×7, 6×3 |
+| run17 | 6 mm/rev | 7 mm/rev  | **WRONG** | 7×7, 5×2, 3×1 |
+| run5  | 7 mm/rev | 6 mm/rev  | **WRONG** | 6×10 |
+| run36 | 8 mm/rev | 8 mm/rev  | **OK**    | 8×10 |
+
+**Whole-run probability averaging** — `feed_cnxt_10w_adamw.pt` (ConvNeXt-Tiny) — **50.0% (3/6)**:
+
+| Run | True | Predicted | Result | Avg prob (top 2) |
+|-----|------|-----------|--------|------------------|
+| run25 | 3 mm/rev | 3 mm/rev | **OK**    | 3=0.841, 4=0.091 |
+| run13 | 4 mm/rev | 6 mm/rev  | **WRONG** | 6=1.000, 5=0.000 |
+| run31 | 5 mm/rev | 5 mm/rev  | **OK**    | 5=0.581, 6=0.371 |
+| run17 | 6 mm/rev | 7 mm/rev  | **WRONG** | 7=0.642, 5=0.210 |
+| run5  | 7 mm/rev | 6 mm/rev  | **WRONG** | 6=1.000, 5=0.000 |
+| run36 | 8 mm/rev | 8 mm/rev  | **OK**    | 8=0.998, 7=0.002 |
 
 **Window majority-vote** — `feed_effb0_10w_adamw.pt` (EfficientNet-B0):
 
@@ -189,16 +253,17 @@ Pre-SMOTE the dataset was severely imbalanced: 8 mm/rev had only 2 training runs
 | run5  | 7 mm/rev | 6 mm/rev  | **WRONG** | 6=0.999, 7=0.000 |
 | run36 | 8 mm/rev | 8 mm/rev  | **OK**    | 8=0.773, 7=0.155 |
 
-Both models correctly classify run25, run31, and run36. Both fail on run13, run17, and run5 under both methods — the wrong predictions are highly confident (e.g., run13: ResNet p=1.000 for 6 mm/rev). Probability averaging does not recover any additional runs compared to majority voting.
+All three architectures correctly classify run25, run31, and run36 and fail run13 and run5 under both methods — the wrong predictions are highly confident. ConvNeXt-Tiny shifts the run17 failure from 5 mm/rev to 7 mm/rev. Probability averaging does not recover any additional runs compared to majority voting across any architecture.
 
 ---
 
 ### Feed Rate Coarse (3-class: low/med/high, 39 train / 6 test runs)
 
-| Model file | Backbone | Window Acc | Run Majority-Vote |
-|------------|----------|-----------|-------------------|
-| `exp_models/feed_coarse_rn18_10w_adamw.pt` | ResNet18 | **66.7%** | **66.7%** |
-| `exp_models/feed_coarse_effb0_10w_adamw.pt` | EfficientNet-B0 | **66.7%** | **66.7%** |
+| Model file | Backbone | Window Acc | Run Majority-Vote | Soft Avg |
+|------------|----------|-----------|-------------------|----------|
+| `feed_coarse_cnxt_10w_adamw.pt` | ConvNeXt-Tiny | **80.0%** | **83.3%** | **83.3%** |
+| `exp_models/feed_coarse_rn18_10w_adamw.pt` | ResNet18 | 66.7% | 66.7% | 66.7% |
+| `exp_models/feed_coarse_effb0_10w_adamw.pt` | EfficientNet-B0 | 66.7% | 66.7% | 66.7% |
 
 **SMOTE augmentation** (`smote_feed_coarse_labels.csv`) — 18 synthetic runs added:
 
@@ -211,7 +276,18 @@ Both models correctly classify run25, run31, and run36. Both fail on run13, run1
 
 Pre-SMOTE the high class had only 7 training runs vs 19 for medium. SMOTE added 12 synthetic runs to high and 6 to low, bringing all three classes to exactly 19 runs / 190 images.
 
-**Window majority-vote** and **whole-run probability averaging** — both architectures produce identical run-level predictions under both methods:
+**Window majority-vote and whole-run probability averaging** — `feed_coarse_cnxt_10w_adamw.pt` (ConvNeXt-Tiny, best — **83.3%**):
+
+| Run | True | Predicted | Result | Window votes / Avg prob (top 2) |
+|-----|------|-----------|--------|---------------------------------|
+| run25 | low (3-4)    | low    | **OK**    | low×10 / low=0.689, med=0.311 |
+| run13 | low (3-4)    | high   | **WRONG** | high×10 / high=0.973, med=0.027 |
+| run31 | medium (5-6) | medium | **OK**    | med×10 / med=0.947, low=0.052 |
+| run17 | medium (5-6) | medium | **OK**    | med×10 / med=0.928, high=0.064 |
+| run36 | high (7-8)   | high   | **OK**    | high×10 / high=0.988, med=0.012 |
+| run5  | high (7-8)   | high   | **OK**    | high×8, med×2 / high=0.828, med=0.171 |
+
+**Window majority-vote and whole-run probability averaging** — ResNet18 and EfficientNet-B0 produce identical predictions (**66.7%** each):
 
 | Run | True | Predicted | Result | ResNet votes / prob | EfficientNet votes / prob |
 |-----|------|-----------|--------|---------------------|--------------------------|
@@ -222,7 +298,7 @@ Pre-SMOTE the high class had only 7 training runs vs 19 for medium. SMOTE added 
 | run36 | high (7-8)   | high   | **OK**    | high×10 / high=0.990 | high×10 / high=0.989 |
 | run5  | high (7-8)   | medium | **WRONG** | med×10 / med=0.923 | med×10 / med=1.000 |
 
-run13 (4 mm/rev, boundary of low) and run5 (7 mm/rev, boundary of high) fail under both methods in both architectures — the same two runs that fail in fine-grained classification.
+ConvNeXt-Tiny fixes run5 (7 mm/rev, high) which both other models fail, pushing run-level accuracy to 83.3%. It fails run13 (4 mm/rev, low) with a larger error (predicted high, p=0.973) vs ResNet18/EfficientNet-B0 which predict medium. Medium class is perfectly separated across all architectures.
 
 ---
 

@@ -232,14 +232,71 @@ Both models achieve perfect run-level accuracy on completely unseen data. ConvNe
 
 ---
 
+### Model C: `feed_cnxt_10w_adamw.pt` (ConvNeXt-Tiny)
+
+| Metric | Value |
+|--------|-------|
+| Window accuracy | **43.3%** (26/60) |
+| Run majority-vote | **50.0%** (3/6 runs) |
+| Soft prob avg | **50.0%** (3/6 runs) |
+
+**Per-class window accuracy:**
+
+| Class | Correct | Misclassified as |
+|-------|---------|-----------------|
+| 3 mm/rev | 9/10 | 5 mm/rev ×1 |
+| 4 mm/rev | 0/10 | 6 mm/rev ×10 |
+| 5 mm/rev | 7/10 | 6 mm/rev ×3 |
+| 6 mm/rev | 0/10 | 7 mm/rev ×7, 5 mm/rev ×2, 3 mm/rev ×1 |
+| 7 mm/rev | 0/10 | 6 mm/rev ×10 |
+| 8 mm/rev | 10/10 | - |
+
+**Per-run majority-vote:**
+
+| Run | True | Predicted | Status | Votes |
+|-----|------|-----------|--------|-------|
+| run25 | 3 mm/rev | 3 mm/rev | OK    | 3×9, 5×1 |
+| run13 | 4 mm/rev | 6 mm/rev | WRONG | 6×10 |
+| run31 | 5 mm/rev | 5 mm/rev | OK    | 5×7, 6×3 |
+| run17 | 6 mm/rev | 7 mm/rev | WRONG | 7×7, 5×2, 3×1 |
+| run5  | 7 mm/rev | 6 mm/rev | WRONG | 6×10 |
+| run36 | 8 mm/rev | 8 mm/rev | OK    | 8×10 |
+
+**Per-run soft probability averaging:**
+
+| Run | True | Predicted | Status | Avg prob (top 2) |
+|-----|------|-----------|--------|-----------------|
+| run25 | 3 mm/rev | 3 mm/rev | OK    | 3=0.841, 4=0.091 |
+| run13 | 4 mm/rev | 6 mm/rev | WRONG | 6=1.000, 5=0.000 |
+| run31 | 5 mm/rev | 5 mm/rev | OK    | 5=0.581, 6=0.371 |
+| run17 | 6 mm/rev | 7 mm/rev | WRONG | 7=0.642, 5=0.210 |
+| run5  | 7 mm/rev | 6 mm/rev | WRONG | 6=1.000, 5=0.000 |
+| run36 | 8 mm/rev | 8 mm/rev | OK    | 8=0.998, 7=0.002 |
+
+**Confusion matrix (windows, rows=true, cols=pred):**
+
+| | 3 | 4 | 5 | 6 | 7 | 8 |
+|--|---|---|---|---|---|---|
+| 3 mm/rev | **9** | 0 | 1 | 0 | 0 | 0 |
+| 4 mm/rev | 0 | **0** | 0 | 10 | 0 | 0 |
+| 5 mm/rev | 0 | 0 | **7** | 3 | 0 | 0 |
+| 6 mm/rev | 1 | 0 | 2 | **0** | 7 | 0 |
+| 7 mm/rev | 0 | 0 | 0 | 10 | **0** | 0 |
+| 8 mm/rev | 0 | 0 | 0 | 0 | 0 | **10** |
+
+ConvNeXt-Tiny shifts the failure pattern compared to ResNet18: run17 (6 mm/rev) is now predicted as 7 mm/rev instead of 5 mm/rev, and 6 mm/rev windows scatter across multiple classes. Run13 (4 mm/rev) and run5 (7 mm/rev) remain failures under all three architectures.
+
+---
+
 ### Feed Fine-Grained Summary
 
-| Model | Backbone | Window Acc | Run MV Acc |
-|-------|----------|-----------|-----------|
-| `feed_rn18_10w_adamw.pt` | ResNet18 | **48.3%** | **50.0%** |
-| `feed_effb0_10w_adamw.pt` | EfficientNet-B0 | 38.3% | 50.0% |
+| Model | Backbone | Window Acc | Run MV Acc | Soft Avg |
+|-------|----------|-----------|-----------|----------|
+| `feed_rn18_10w_adamw.pt` | ResNet18 | **48.3%** | **50.0%** | **50.0%** |
+| `feed_effb0_10w_adamw.pt` | EfficientNet-B0 | 38.3% | 50.0% | 50.0% |
+| `feed_cnxt_10w_adamw.pt` | ConvNeXt-Tiny | 43.3% | 50.0% | 50.0% |
 
-Feed rate 4, 6, and 7 mm/rev collapse to adjacent class predictions across both architectures with zero correct predictions. The extreme classes (3 and 8 mm/rev) are reliably identified. The middle feed rates produce CWT signatures dominated by RPM harmonics rather than feed-rate-specific chip-load modulation — this is a signal-level problem that persists across architectures.
+Feed rate 4, 6, and 7 mm/rev collapse to adjacent class predictions across all three architectures with zero correct predictions. The extreme classes (3 and 8 mm/rev) are reliably identified. The middle feed rates produce CWT signatures dominated by RPM harmonics rather than feed-rate-specific chip-load modulation — this is a signal-level problem that persists across all tested architectures.
 
 ---
 
@@ -379,28 +436,222 @@ All 6 test runs correctly classified by majority vote. The 4 window-level miscla
 
 ---
 
+### Model C: `feed_coarse_cnxt_10w_adamw.pt` (ConvNeXt-Tiny, AdamW, 20 epochs)
+
+| Metric | Value |
+|--------|-------|
+| Window accuracy | **80.0%** (48/60) |
+| Run majority-vote | **83.3%** (5/6 runs) |
+| Soft prob avg | **83.3%** (5/6 runs) |
+
+**Per-class window accuracy:**
+
+| Class | Correct | Misclassified as |
+|-------|---------|-----------------|
+| low (3-4 mm/rev)    | 10/20 | high ×10 |
+| medium (5-6 mm/rev) | 20/20 | - |
+| high (7-8 mm/rev)   | 18/20 | medium ×2 |
+
+**Per-run majority-vote:**
+
+| Run | True | Predicted | Status | Votes |
+|-----|------|-----------|--------|-------|
+| run25 | low    | low    | OK    | low×10 |
+| run13 | low    | high   | WRONG | high×10 |
+| run31 | medium | medium | OK    | medium×10 |
+| run17 | medium | medium | OK    | medium×10 |
+| run36 | high   | high   | OK    | high×10 |
+| run5  | high   | high   | OK    | high×8, medium×2 |
+
+**Per-run soft probability averaging:**
+
+| Run | True | Predicted | Status | Avg prob (top 2) |
+|-----|------|-----------|--------|-----------------|
+| run25 | low    | low    | OK    | low=0.689, medium=0.311 |
+| run13 | low    | high   | WRONG | high=0.973, medium=0.027 |
+| run31 | medium | medium | OK    | medium=0.947, low=0.052 |
+| run17 | medium | medium | OK    | medium=0.928, high=0.064 |
+| run36 | high   | high   | OK    | high=0.988, medium=0.012 |
+| run5  | high   | high   | OK    | high=0.828, medium=0.171 |
+
+**Confusion matrix (windows, rows=true, cols=pred):**
+
+| | low | medium | high |
+|--|-----|--------|------|
+| low    | **10** | 0 | 10 |
+| medium | 0 | **20** | 0 |
+| high   | 0 | 2 | **18** |
+
+ConvNeXt-Tiny is the best coarse feed model, correctly classifying 5/6 runs (83.3%). The failure pattern differs from ResNet18 and EfficientNet-B0: run13 (4 mm/rev, low class) is predicted as **high** instead of medium — a larger misclassification error. However, run5 (7 mm/rev, high class) which failed in both other models is now correctly classified. Medium class remains perfectly separated.
+
+---
+
 ### Feed Coarse Summary
 
-| Model | Backbone | Window Acc | Run MV Acc |
-|-------|----------|-----------|-----------|
-| `feed_coarse_rn18_10w_adamw.pt` | ResNet18 | **66.7%** | **66.7%** |
-| `feed_coarse_effb0_10w_adamw.pt` | EfficientNet-B0 | **66.7%** | **66.7%** |
+| Model | Backbone | Window Acc | Run MV Acc | Soft Avg |
+|-------|----------|-----------|-----------|----------|
+| `feed_coarse_cnxt_10w_adamw.pt` | ConvNeXt-Tiny | **80.0%** | **83.3%** | **83.3%** |
+| `feed_coarse_rn18_10w_adamw.pt` | ResNet18 | 66.7% | 66.7% | 66.7% |
+| `feed_coarse_effb0_10w_adamw.pt` | EfficientNet-B0 | 66.7% | 66.7% | 66.7% |
 
-Both architectures produce identical predictions. The failures are run13 (4 mm/rev labeled low, but near the low/medium boundary) and run5 (7 mm/rev labeled high, but near the high/medium boundary). Coarsening the label space improves overall accuracy from 48% to 67% but does not resolve the boundary-case problem.
+ConvNeXt-Tiny significantly outperforms the other two architectures on coarse feed classification (83.3% vs 66.7%). It correctly classifies run5 (7 mm/rev, high) which both ResNet18 and EfficientNet-B0 fail on, while still failing run13 (4 mm/rev, low — predicted high with p=0.973). ResNet18 and EfficientNet-B0 produce identical predictions; the failure pattern is symmetric around medium. Coarsening from 6 to 3 classes improves the ceiling from 50% to 83.3% for ConvNeXt.
+
+---
+
+## 5. Depth of Cut (3-class: 0.015 / 0.030 / 0.060 mm)
+
+**Test runs (9 total, 3 per class):**
+
+| Run | True DOC | Speed |
+|-----|---------|-------|
+| run1  | 0.015 mm | 4000 rpm |
+| run5  | 0.015 mm | 5000 rpm |
+| run43 | 0.015 mm | 3000 rpm |
+| run7  | 0.030 mm | 1500 rpm |
+| run14 | 0.030 mm | 3000 rpm |
+| run19 | 0.030 mm | 5000 rpm |
+| run22 | 0.060 mm | 1500 rpm |
+| run29 | 0.060 mm | 3000 rpm |
+| run36 | 0.060 mm | 5000 rpm |
+
+### Model A: `best_model_doc_resnet18.pt` (ResNet18)
+
+| Metric | Value |
+|--------|-------|
+| Window accuracy | **82.2%** (74/90) |
+| Run majority-vote | **88.9%** (8/9) |
+| Soft prob avg | **88.9%** (8/9) |
+
+**Per-class window accuracy:**
+
+| Class | Correct | Misclassified as |
+|-------|---------|-----------------|
+| 0.015 mm | 30/30 | - |
+| 0.030 mm | 26/30 | 0.015 mm ×4 |
+| 0.060 mm | 18/30 | 0.030 mm ×10, 0.015 mm ×2 |
+
+**Per-run majority-vote:**
+
+| Run | True | Predicted | Status | Votes |
+|-----|------|-----------|--------|-------|
+| run1  | 0.015 mm | 0.015 mm | OK    | 0.015×10 |
+| run5  | 0.015 mm | 0.015 mm | OK    | 0.015×10 |
+| run43 | 0.015 mm | 0.015 mm | OK    | 0.015×10 |
+| run7  | 0.030 mm | 0.030 mm | OK    | 0.030×10 |
+| run14 | 0.030 mm | 0.030 mm | OK    | 0.030×10 |
+| run19 | 0.030 mm | 0.030 mm | OK    | 0.030×6, 0.015×4 |
+| run22 | 0.060 mm | 0.060 mm | OK    | 0.060×9, 0.015×1 |
+| run29 | 0.060 mm | 0.060 mm | OK    | 0.060×9, 0.015×1 |
+| run36 | 0.060 mm | 0.030 mm | WRONG | 0.030×10 |
+
+**Per-run soft probability averaging:**
+
+| Run | True | Predicted | Status | Avg prob (top 2) |
+|-----|------|-----------|--------|-----------------|
+| run1  | 0.015 mm | 0.015 mm | OK    | 0.015=0.974, 0.030=0.016 |
+| run5  | 0.015 mm | 0.015 mm | OK    | 0.015=1.000, 0.030=0.000 |
+| run43 | 0.015 mm | 0.015 mm | OK    | 0.015=0.998, 0.030=0.002 |
+| run7  | 0.030 mm | 0.030 mm | OK    | 0.030=0.990, 0.015=0.009 |
+| run14 | 0.030 mm | 0.030 mm | OK    | 0.030=0.884, 0.015=0.089 |
+| run19 | 0.030 mm | 0.030 mm | OK    | 0.030=0.558, 0.015=0.389 |
+| run22 | 0.060 mm | 0.060 mm | OK    | 0.060=0.848, 0.015=0.104 |
+| run29 | 0.060 mm | 0.060 mm | OK    | 0.060=0.885, 0.015=0.092 |
+| run36 | 0.060 mm | 0.030 mm | WRONG | 0.030=0.943, 0.060=0.055 |
+
+**Confusion matrix (windows, rows=true, cols=pred):**
+
+| | 0.015 mm | 0.030 mm | 0.060 mm |
+|--|----------|----------|----------|
+| 0.015 mm | **30** | 0 | 0 |
+| 0.030 mm | 4 | **26** | 0 |
+| 0.060 mm | 2 | 10 | **18** |
+
+The single failure is run36 (5000 rpm, 0.060 mm) — all 10 windows vote 0.030 mm with high confidence (prob=0.943). 0.015 mm is perfectly separated; both 0.030 mm and 0.060 mm confuse downward toward lower DOC values.
+
+---
+
+### Model B: `best_model_doc_convnext.pt` (ConvNeXt-Tiny)
+
+| Metric | Value |
+|--------|-------|
+| Window accuracy | **77.8%** (70/90) |
+| Run majority-vote | **77.8%** (7/9) |
+| Soft prob avg | **77.8%** (7/9) |
+
+**Per-class window accuracy:**
+
+| Class | Correct | Misclassified as |
+|-------|---------|-----------------|
+| 0.015 mm | 30/30 | - |
+| 0.030 mm | 20/30 | 0.015 mm ×10 |
+| 0.060 mm | 20/30 | 0.015 mm ×10 |
+
+**Per-run majority-vote:**
+
+| Run | True | Predicted | Status | Votes |
+|-----|------|-----------|--------|-------|
+| run1  | 0.015 mm | 0.015 mm | OK    | 0.015×10 |
+| run5  | 0.015 mm | 0.015 mm | OK    | 0.015×10 |
+| run43 | 0.015 mm | 0.015 mm | OK    | 0.015×10 |
+| run7  | 0.030 mm | 0.030 mm | OK    | 0.030×10 |
+| run14 | 0.030 mm | 0.030 mm | OK    | 0.030×10 |
+| run19 | 0.030 mm | 0.015 mm | WRONG | 0.015×10 |
+| run22 | 0.060 mm | 0.060 mm | OK    | 0.060×10 |
+| run29 | 0.060 mm | 0.060 mm | OK    | 0.060×10 |
+| run36 | 0.060 mm | 0.015 mm | WRONG | 0.015×10 |
+
+**Per-run soft probability averaging:**
+
+| Run | True | Predicted | Status | Avg prob (top 2) |
+|-----|------|-----------|--------|-----------------|
+| run1  | 0.015 mm | 0.015 mm | OK    | 0.015=0.747, 0.060=0.140 |
+| run5  | 0.015 mm | 0.015 mm | OK    | 0.015=0.857, 0.060=0.084 |
+| run43 | 0.015 mm | 0.015 mm | OK    | 0.015=0.510, 0.060=0.301 |
+| run7  | 0.030 mm | 0.030 mm | OK    | 0.030=0.884, 0.060=0.112 |
+| run14 | 0.030 mm | 0.030 mm | OK    | 0.030=0.820, 0.060=0.146 |
+| run19 | 0.030 mm | 0.015 mm | WRONG | 0.015=0.496, 0.060=0.307 |
+| run22 | 0.060 mm | 0.060 mm | OK    | 0.060=0.832, 0.030=0.147 |
+| run29 | 0.060 mm | 0.060 mm | OK    | 0.060=0.958, 0.030=0.041 |
+| run36 | 0.060 mm | 0.015 mm | WRONG | 0.015=0.373, 0.060=0.330 |
+
+**Confusion matrix (windows, rows=true, cols=pred):**
+
+| | 0.015 mm | 0.030 mm | 0.060 mm |
+|--|----------|----------|----------|
+| 0.015 mm | **30** | 0 | 0 |
+| 0.030 mm | 10 | **20** | 0 |
+| 0.060 mm | 10 | 0 | **20** |
+
+ConvNeXt misclassifies both run19 (0.030 mm, 5000 rpm) and run36 (0.060 mm, 5000 rpm) as 0.015 mm. Both failures are at 5000 rpm — high-speed runs produce lower-amplitude vibrations in some feed/DOC combinations, making them look energetically similar to 0.015 mm cuts.
+
+---
+
+### DOC Model Comparison
+
+| Model | Backbone | Window Acc | Run MV Acc | Soft Avg Acc |
+|-------|----------|-----------|-----------|-------------|
+| `best_model_doc_resnet18.pt` | ResNet18 | **82.2%** | **88.9%** | **88.9%** |
+| `best_model_doc_convnext.pt` | ConvNeXt-Tiny | 77.8% | 77.8% | 77.8% |
+
+ResNet18 outperforms ConvNeXt-Tiny on DOC, reversing the pattern seen for speed. The single ResNet18 failure (run36) is a confident misclassification — probability averaging does not recover it. ConvNeXt fails on two runs (run19 and run36), both at 5000 rpm where the DOC signal is partially masked by high-speed harmonic energy.
 
 ---
 
 ## Overall Summary
 
-| Model File | Target | Backbone | Windows | Window Acc | Run MV Acc |
-|-----------|--------|----------|---------|-----------|-----------|
-| `speed_cnxt_10w.pt` | Speed (5-class) | ConvNeXt-Tiny | 100 | **96.0%** | **100.0%** |
-| `speed_resnet_10w.pt` | Speed (5-class) | ResNet18 | 100 | 90.0% | **100.0%** |
-| `exp_models/feed_rn18_10w_adamw.pt` | Feed (6-class) | ResNet18 | 60 | **48.3%** | 50.0% |
-| `exp_models/feed_effb0_10w_adamw.pt` | Feed (6-class) | EfficientNet-B0 | 60 | 38.3% | 50.0% |
-| `exp_models/roughness_rn18_10w_adamw.pt` | Roughness (3-class) | ResNet18 | 60 | **93.3%** | **100.0%** |
-| `exp_models/feed_coarse_rn18_10w_adamw.pt` | Feed Coarse (3-class) | ResNet18 | 60 | **66.7%** | **66.7%** |
-| `exp_models/feed_coarse_effb0_10w_adamw.pt` | Feed Coarse (3-class) | EfficientNet-B0 | 60 | **66.7%** | **66.7%** |
+| Model File | Target | Backbone | Windows | Window Acc | Run MV Acc | Soft Avg |
+|-----------|--------|----------|---------|-----------|-----------|----------|
+| `speed_cnxt_10w.pt` | Speed (5-class) | ConvNeXt-Tiny | 100 | **96.0%** | **100.0%** | **100.0%** |
+| `speed_resnet_10w.pt` | Speed (5-class) | ResNet18 | 100 | 90.0% | **100.0%** | **100.0%** |
+| `best_model_doc_resnet18.pt` | DOC (3-class) | ResNet18 | 90 | **82.2%** | **88.9%** | **88.9%** |
+| `best_model_doc_convnext.pt` | DOC (3-class) | ConvNeXt-Tiny | 90 | 77.8% | 77.8% | 77.8% |
+| `exp_models/roughness_rn18_10w_adamw.pt` | Roughness (3-class) | ResNet18 | 60 | **93.3%** | **100.0%** | **100.0%** |
+| `feed_coarse_cnxt_10w_adamw.pt` | Feed Coarse (3-class) | ConvNeXt-Tiny | 60 | **80.0%** | **83.3%** | **83.3%** |
+| `exp_models/feed_coarse_rn18_10w_adamw.pt` | Feed Coarse (3-class) | ResNet18 | 60 | 66.7% | 66.7% | 66.7% |
+| `exp_models/feed_coarse_effb0_10w_adamw.pt` | Feed Coarse (3-class) | EfficientNet-B0 | 60 | 66.7% | 66.7% | 66.7% |
+| `feed_rn18_10w_adamw.pt` | Feed (6-class) | ResNet18 | 60 | **48.3%** | 50.0% | 50.0% |
+| `feed_cnxt_10w_adamw.pt` | Feed (6-class) | ConvNeXt-Tiny | 60 | 43.3% | 50.0% | 50.0% |
+| `feed_effb0_10w_adamw.pt` | Feed (6-class) | EfficientNet-B0 | 60 | 38.3% | 50.0% | 50.0% |
 
 ---
 
@@ -408,10 +659,12 @@ Both architectures produce identical predictions. The failures are run13 (4 mm/r
 
 **Speed is solved.** Both speed models achieve 100% run-level accuracy on completely unseen holdout data. RPM places spindle harmonics at fixed frequency positions that survive any normalization or DOC/feed variation. ConvNeXt-Tiny shows higher per-window confidence (96% vs 90%), which matters if window-level scores are used as uncertainty estimates.
 
+**DOC is partially solved.** ResNet18 achieves 88.9% run-level accuracy (8/9 runs) on DOC with a single failure: run36 (5000 rpm, 0.060 mm) misclassified as 0.030 mm. ConvNeXt-Tiny reaches 77.8% (7/9), failing on both 5000 rpm runs in higher DOC classes (run19 and run36). The 0.015 mm class is perfectly separated by both models — shallow cuts produce a distinctly lower-energy CWT signature. For ResNet18, this reverses the architecture ranking seen for speed: ConvNeXt-Tiny does not offer an advantage on DOC classification.
+
 **Roughness generalizes well.** The ResNet18 roughness model achieves 93.3% window accuracy and 100% run-level accuracy on 6 unseen runs spanning all three roughness classes and all three DOC levels. The rare window-level errors occur at class boundaries (run27 Medium Ra=0.868 um is near the 1.0 threshold). SMOTE-balanced training on 10-window scalograms captures the DOC-driven surface energy pattern reliably.
 
-**Feed rate is the hard problem.** The 6-class fine-grained model tops out at 48.3% window / 50% run accuracy. The 3-class coarse version reaches 66.7%, an improvement, but both share the same root failure: the middle-range feed rates (4, 6, 7 mm/rev) produce CWT signatures dominated by RPM harmonics rather than feed-specific modulation. Classes 4, 6, and 7 mm/rev achieve 0 correct predictions across all architectures. The extreme classes (3 and 8 mm/rev) are reliably identified because they represent the strongest departure from the median spectral pattern.
+**Feed rate is the hard problem, but coarse classification is improving.** The 6-class fine-grained model tops out at 48.3% window / 50% run accuracy across all three tested architectures (ResNet18, EfficientNet-B0, ConvNeXt-Tiny) — a hard ceiling. Classes 4, 6, and 7 mm/rev achieve 0 correct predictions in all cases; only the extreme classes (3 and 8 mm/rev) are reliably identified. Coarsening to 3 classes with ConvNeXt-Tiny breaks the ceiling: 83.3% run accuracy (5/6) vs 66.7% for ResNet18 and EfficientNet-B0. ConvNeXt correctly resolves run5 (7 mm/rev, high) that the other two fail on, though it fails run13 (4 mm/rev, low) with a wider misclassification error (predicted high instead of medium).
 
-**Architecture matters less than signal quality.** For speed and roughness, ResNet18 and ConvNeXt-Tiny converge to the same run-level accuracy — the signal is strong enough that the model cannot fail. For feed rate, no architecture tested (ResNet18, EfficientNet-B0, ConvNeXt-Tiny) escaped the 50% ceiling on holdout data.
+**Architecture matters less than signal quality.** For speed, ConvNeXt-Tiny has higher per-window confidence (96% vs 90%) but both hit 100% run-level. For DOC, ResNet18 outperforms ConvNeXt-Tiny (88.9% vs 77.8%), suggesting the DOC amplitude pattern is better captured by residual connections. For feed rate, no architecture tested escaped the 50% ceiling on holdout data.
 
-**Majority voting is robust.** Even when individual windows misclassify (e.g., 4 of 10 windows in run16 and run22 for speed), majority vote corrects the run-level prediction for speed and roughness. For feed rate, majority vote does not help because the misclassifications are systematic — all 10 windows of a given run vote for the same wrong class, revealing that the confusion is about the fundamental spectral signature, not noise.
+**Majority voting is robust.** Even when individual windows misclassify (e.g., 4 of 10 windows in run16 for speed, 4 of 10 in run19 for DOC-ResNet18), majority vote corrects the run-level prediction. Soft probability averaging matches majority-vote performance — it does not recover additional runs when the model is confidently wrong (e.g., run36 DOC ResNet18: p=0.943 for the wrong class). For feed rate, majority vote does not help because all 10 windows of a given run vote for the same wrong class, revealing a spectral signature problem rather than noise.
