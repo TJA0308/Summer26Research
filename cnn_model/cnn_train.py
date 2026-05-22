@@ -39,6 +39,14 @@ SPEED_TEST_RUNS = {
     "run2",  "run16",  # class 3 (4000 rpm): DOC=0.015, 0.030
     "run5",  "run36",  # class 4 (5000 rpm): DOC=0.015, 0.060  → 10 test, 35 train
 }
+# Balanced split: 3 per class × 5 RPM classes (one per DOC level) = 15 test, 30 train
+SPEED_TEST_RUNS_BALANCED = {
+    "run9",  "run22", "run37",   # 1500 rpm: DOC=0.030, 0.060, 0.015
+    "run12", "run27", "run40",   # 2000 rpm: DOC=0.030, 0.060, 0.015
+    "run15", "run28", "run43",   # 3000 rpm: DOC=0.030, 0.060, 0.015
+    "run2",  "run16", "run31",   # 4000 rpm: DOC=0.015, 0.030, 0.060
+    "run5",  "run19", "run36",   # 5000 rpm: DOC=0.015, 0.030, 0.060
+}
 
 # ── Feed rate prediction ──────────────────────────────────────────────────
 # Actual feed values in mm/rev: 0=3, 1=4, 2=5, 3=6, 4=7, 5=8
@@ -100,6 +108,12 @@ DOC_TEST_RUNS = {
     "run1",  "run5",  "run43",   # class 0 (0.015): 4000rpm, 5000rpm, 3000rpm
     "run7",  "run14", "run19",   # class 1 (0.030): 1500rpm, 3000rpm, 5000rpm
     "run22", "run29", "run36",   # class 2 (0.060): 1500rpm, 3000rpm, 5000rpm
+}
+# Balanced split: 5+5+4 = 14 test, 31 train
+DOC_TEST_RUNS_BALANCED = {
+    "run1",  "run5",  "run43", "run38", "run41",  # 0.015: 4000,5000,3000,1500,2000 rpm
+    "run7",  "run14", "run19", "run11", "run16",  # 0.030: 1500,3000,5000,2000,4000 rpm
+    "run22", "run29", "run36", "run25",           # 0.060: 1500,3000,5000,2000 rpm
 }
 
 # ── Surface roughness prediction (Ra μm) ─────────────────────────────────
@@ -626,6 +640,9 @@ def main():
                         help="Apply test-time augmentation (8 augmented views averaged at inference)")
     parser.add_argument("--extra_img_dir", default=None,
                         help="Additional scalogram directory merged into training set (e.g. scalograms_10w_fi)")
+    parser.add_argument("--split",          default="standard",
+                        choices=["standard", "balanced"],
+                        help="Test split: standard (original) or balanced (3/class speed, 5+5+4 DOC)")
     args = parser.parse_args()
 
     seed_everything(SEED)
@@ -649,7 +666,7 @@ def main():
     elif args.target == "doc":
         label_map   = DOC_LABELS
         class_names = DOC_NAMES
-        test_runs   = DOC_TEST_RUNS
+        test_runs   = DOC_TEST_RUNS_BALANCED if args.split == "balanced" else DOC_TEST_RUNS
         num_classes = 3
         if args.save == "best_model.pt":
             args.save = "best_model_doc.pt"
@@ -663,7 +680,7 @@ def main():
     else:
         label_map   = SPEED_LABELS
         class_names = SPEED_NAMES
-        test_runs   = SPEED_TEST_RUNS
+        test_runs   = SPEED_TEST_RUNS_BALANCED if args.split == "balanced" else SPEED_TEST_RUNS
         num_classes = 5
 
     img_dir = Path(args.img_dir)
