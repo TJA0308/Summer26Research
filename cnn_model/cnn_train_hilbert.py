@@ -57,8 +57,15 @@ DOC_TEST_RUNS_H = {
 }
 
 # ── Feed: unchanged (6 test, 39 train) ────────────────────────────────────
-FEED_TEST_RUNS_H       = FEED_TEST_RUNS
+FEED_TEST_RUNS_H        = FEED_TEST_RUNS
 FEED_COARSE_TEST_RUNS_H = FEED_TEST_RUNS
+
+# ── Feed 5-class: drop class 5 (8 mm/rev) which has only 2 training runs ──
+# run6, run21, run36 are the only class-5 runs; run36 is the test run.
+FEED5_LABELS   = {run: lbl for run, lbl in FEED_LABELS.items() if lbl != 5}
+FEED5_NAMES    = {0: "3 mm/rev", 1: "4 mm/rev", 2: "5 mm/rev",
+                  3: "6 mm/rev", 4: "7 mm/rev"}
+FEED5_TEST_RUNS = FEED_TEST_RUNS - {"run36"}  # 5 test runs, 37 train runs
 
 
 def seed_everything(seed):
@@ -227,7 +234,7 @@ def main():
     parser.add_argument("--img_dir",      required=True,
                         help="Directory of .npy scalogram files (from scalogram_hilbert.py)")
     parser.add_argument("--target",       default="speed",
-                        choices=["speed", "doc", "feed", "feed_coarse", "roughness"])
+                        choices=["speed", "doc", "feed", "feed5", "feed_coarse", "roughness"])
     parser.add_argument("--backbone",     default="resnet18",
                         choices=["resnet18", "resnet50", "efficientnet_b0", "convnext_tiny"])
     parser.add_argument("--epochs",       type=int,   default=20)
@@ -266,6 +273,10 @@ def main():
         label_map, class_names, test_runs, num_classes = (
             FEED_LABELS, FEED_NAMES, FEED_TEST_RUNS_H, 6)
         default_save = f"hilbert_feed_{args.backbone}.pt"
+    elif args.target == "feed5":
+        label_map, class_names, test_runs, num_classes = (
+            FEED5_LABELS, FEED5_NAMES, FEED5_TEST_RUNS, 5)
+        default_save = f"hilbert_feed5_{args.backbone}.pt"
     elif args.target == "feed_coarse":
         label_map, class_names, test_runs, num_classes = (
             FEED_COARSE_LABELS, FEED_COARSE_NAMES, FEED_COARSE_TEST_RUNS_H, 3)
@@ -281,6 +292,7 @@ def main():
         "speed":       "smote_h_speed_labels.csv",
         "doc":         "smote_h_doc_labels.csv",
         "feed":        "smote_h_feed_labels.csv",
+        "feed5":       "smote_h_feed5_labels.csv",
         "feed_coarse": "smote_h_feed_coarse_labels.csv",
         "roughness":   "smote_h_roughness_labels.csv",
     }
