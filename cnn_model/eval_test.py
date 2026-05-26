@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torchvision import transforms
 from PIL import Image
 from collections import defaultdict, Counter
@@ -22,6 +23,10 @@ from cnn_train import (
     RA_LABELS, RA_TEST_RUNS, RA_NAMES,
     DOC_LABELS, DOC_TEST_RUNS, DOC_NAMES,
     build_model,
+)
+from cnn_train_hilbert import (
+    FEED5_LABELS, FEED5_NAMES, FEED5_TEST_RUNS,
+    build_model_4ch,
 )
 
 ROOT = Path(__file__).parent.parent
@@ -127,7 +132,6 @@ def evaluate_prob_avg(model, paths, labels, run_ids, class_names, device):
     Run-level soft voting: average softmax probabilities across all windows of
     each run, then take argmax. One prediction per run — no per-window accuracy.
     """
-    import torch.nn.functional as F
     model.eval()
 
     # Group by run
@@ -289,6 +293,165 @@ def run_eval(name, model_path, backbone, num_classes, target,
     return result_win, result_prob
 
 
+def load_test_npy(img_dir, label_map, test_runs):
+    """Return (paths, labels, run_ids) for original test run .npy files (no smote_ prefix)."""
+    paths, labels, run_ids = [], [], []
+    for npy in sorted(img_dir.glob("*.npy")):
+        stem = npy.stem
+        if stem.startswith("smote_"):
+            continue
+        run = stem.split("_w")[0]
+        if run not in test_runs:
+            continue
+        label = label_map.get(run)
+        if label is None:
+            continue
+        paths.append(npy)
+        labels.append(label)
+        run_ids.append(run)
+    return paths, labels, run_ids
+
+
+@torch.no_grad()
+def evaluate_npy(model, paths, labels, run_ids, class_names, device):
+    """Window-level + hard majority vote for 4-channel .npy scalograms."""
+    model.eval()
+    preds = []
+    for path in paths:
+        arr = torch.from_numpy(np.load(path)).float().unsqueeze(0).to(device)
+        p = model(arr).argmax(1).item()
+        preds.append(p)
+
+    n       = len(labels)
+    correct = sum(p == l for p, l in zip(preds, labels))
+
+    run_votes  = defaultdict(list)
+    run_labels = {}
+    for run, pred, label in zip(run_ids, preds, labels):
+        run_votes[run].append(pred)
+        run_labels[run] = label
+
+    run_correct = 0
+    run_results = {}
+    for run, votes in sorted(run_votes.items()):
+        majority  = Counter(votes).most_common(1)[0][0]
+        true_lbl  = run_labels[run]
+        ok        = (majority == true_lbl)
+        run_correct += int(ok)
+        run_results[run] = {"true": true_lbl, "majority": majority, "ok": ok, "votes": Counter(votes)}
+
+    class_correct = defaultdict(int)
+    class_total   = defaultdict(int)
+    class_wrong   = defaultdict(list)
+    for p, l in zip(preds, labels):
+        class_total[l]   += 1
+        class_correct[l] += int(p == l)
+        if p != l:
+            class_wrong[l].append(p)
+
+    num_classes = len(class_names)
+    conf = np.zeros((num_classes, num_classes), dtype=int)
+    for p, l in zip(preds, labels):
+        conf[l][p] += 1
+
+    return {
+        "window_acc":    correct / n if n > 0 else 0.0,
+        "run_acc":       run_correct / len(run_votes) if run_votes else 0.0,
+        "n_windows":     n,
+        "n_runs":        len(run_votes),
+        "class_correct": dict(class_correct),
+        "class_total":   dict(class_total),
+        "class_wrong":   dict(class_wrong),
+        "run_results":   run_results,
+        "conf":          conf,
+        "preds":         preds,
+        "labels":        labels,
+    }
+
+
+@torch.no_grad()
+def evaluate_prob_avg_npy(model, paths, labels, run_ids, class_names, device):
+    """Soft probability averaging over windows for 4-channel .npy scalograms."""
+    model.eval()
+
+    run_paths  = defaultdict(list)
+    run_labels = {}
+    for path, label, run in zip(paths, labels, run_ids):
+        run_paths[run].append(path)
+        run_labels[run] = label
+
+    run_results   = {}
+    run_correct   = 0
+    class_correct = defaultdict(int)
+    class_total   = defaultdict(int)
+    class_wrong   = defaultdict(list)
+    num_classes   = len(class_names)
+    conf = np.zeros((num_classes, num_classes), dtype=int)
+
+    for run in sorted(run_paths.keys()):
+        true_lbl = run_labels[run]
+        tensors  = [torch.from_numpy(np.load(p)).float() for p in sorted(run_paths[run])]
+        batch    = torch.stack(tensors).to(device)
+        probs    = F.softmax(model(batch), dim=1).mean(dim=0)
+        top2     = probs.topk(2)
+        pred     = probs.argmax().item()
+        ok       = (pred == true_lbl)
+        run_correct += int(ok)
+        class_total[true_lbl]   += 1
+        class_correct[true_lbl] += int(ok)
+        if not ok:
+            class_wrong[true_lbl].append(pred)
+        conf[true_lbl][pred] += 1
+        run_results[run] = {
+            "true": true_lbl, "pred": pred, "ok": ok,
+            "avg_prob": probs.cpu().numpy(),
+            "top2_idx": top2.indices.cpu().tolist(),
+            "top2_val": top2.values.cpu().tolist(),
+        }
+
+    n_runs = len(run_paths)
+    return {
+        "run_acc":       run_correct / n_runs if n_runs > 0 else 0.0,
+        "n_runs":        n_runs,
+        "class_correct": dict(class_correct),
+        "class_total":   dict(class_total),
+        "class_wrong":   dict(class_wrong),
+        "run_results":   run_results,
+        "conf":          conf,
+    }
+
+
+def run_eval_hilbert(name, model_path, backbone, num_classes, target,
+                     img_dir, label_map, test_runs, class_names, device):
+    print(f"\nLoading {name} from {model_path.name} ...", flush=True)
+    if not model_path.exists():
+        print(f"  ERROR: {model_path} not found, skipping.")
+        return None, None
+    if not img_dir.exists():
+        print(f"  ERROR: {img_dir} not found, skipping.")
+        return None, None
+
+    model = build_model_4ch(backbone, num_classes, freeze_backbone=False).to(device)
+    state = torch.load(model_path, map_location=device, weights_only=True)
+    model.load_state_dict(state)
+
+    paths, labels, run_ids = load_test_npy(img_dir, label_map, test_runs)
+    if not paths:
+        print(f"  ERROR: no test .npy files found in {img_dir}")
+        return None, None
+
+    print(f"  Found {len(paths)} test windows across {len(set(run_ids))} runs", flush=True)
+
+    result_win = evaluate_npy(model, paths, labels, run_ids, class_names, device)
+    print_results(name, target, backbone, img_dir.name, result_win, class_names)
+
+    print(f"\n  --- Soft probability averaging (whole-run) ---", flush=True)
+    result_prob = evaluate_prob_avg_npy(model, paths, labels, run_ids, class_names, device)
+    print_prob_avg_results(name, target, backbone, result_prob, class_names)
+
+    return result_win, result_prob
+
+
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
@@ -364,11 +527,37 @@ def main():
         ),
     ]
 
+    hilbert_experiments = [
+        # (display_name, model_path, backbone, num_classes, target,
+        #  img_dir, label_map, test_runs, class_names)
+        (
+            "hilbert_feed5_cnxt",
+            ROOT / "hilbert_feed5_cnxt.pt",
+            "convnext_tiny", 5, "feed5",
+            ROOT / "scalograms_hilbert_10w",
+            FEED5_LABELS, FEED5_TEST_RUNS, FEED5_NAMES,
+        ),
+        (
+            "hilbert_feed5_rn18",
+            ROOT / "hilbert_feed5_rn18.pt",
+            "resnet18", 5, "feed5",
+            ROOT / "scalograms_hilbert_10w",
+            FEED5_LABELS, FEED5_TEST_RUNS, FEED5_NAMES,
+        ),
+    ]
+
     all_results = {}
     for exp in experiments:
         name, model_path, backbone, num_classes, target, img_dir, label_map, test_runs, class_names = exp
         r_win, r_prob = run_eval(name, model_path, backbone, num_classes, target,
                                  img_dir, label_map, test_runs, class_names, device)
+        if r_win:
+            all_results[name] = (r_win, r_prob, target)
+
+    for exp in hilbert_experiments:
+        name, model_path, backbone, num_classes, target, img_dir, label_map, test_runs, class_names = exp
+        r_win, r_prob = run_eval_hilbert(name, model_path, backbone, num_classes, target,
+                                         img_dir, label_map, test_runs, class_names, device)
         if r_win:
             all_results[name] = (r_win, r_prob, target)
 

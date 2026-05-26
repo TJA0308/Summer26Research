@@ -388,6 +388,100 @@ class ConditionedResNet(nn.Module):
         return self.head(torch.cat([feats, speed_oh, doc_oh], dim=1))
 
 
+class MultiTaskModel(nn.Module):
+    """
+    Shared backbone + three heads: feed (primary), speed, DOC (auxiliary).
+    During training: loss = loss_feed + lambda_speed*loss_speed + lambda_doc*loss_doc
+    During inference: only the feed head is used (speed/DOC labels not needed).
+    Works with any backbone supported by build_model.
+    """
+    def __init__(self, backbone_name, num_feed, num_speed=5, num_doc=3, dropout=0.0):
+        super().__init__()
+        # Build backbone and strip its head
+        if backbone_name == "resnet18":
+            base = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+            feat_dim = base.fc.in_features
+            base.fc = nn.Identity()
+        elif backbone_name == "resnet50":
+            base = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+            feat_dim = base.fc.in_features
+            base.fc = nn.Identity()
+        elif backbone_name == "convnext_tiny":
+            base = models.convnext_tiny(weights=models.ConvNeXt_Tiny_Weights.DEFAULT)
+            feat_dim = base.classifier[2].in_features
+            # Keep LayerNorm2d + Flatten; remove only the final Linear
+            base.classifier = nn.Sequential(base.classifier[0], base.classifier[1])
+        elif backbone_name == "efficientnet_b0":
+            base = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+            feat_dim = base.classifier[1].in_features
+            # EfficientNet flattens before classifier in forward(), so Identity() is safe
+            base.classifier = nn.Identity()
+        else:
+            raise ValueError(f"Unsupported backbone for MultiTaskModel: {backbone_name}")
+
+        self.backbone = base
+
+        def _head(out):
+            return (nn.Sequential(nn.Dropout(dropout), nn.Linear(feat_dim, out))
+                    if dropout > 0 else nn.Linear(feat_dim, out))
+
+        self.head_feed  = _head(num_feed)
+        self.head_speed = _head(num_speed)
+        self.head_doc   = _head(num_doc)
+
+    def forward(self, img):
+        feats = self.backbone(img)
+        return self.head_feed(feats), self.head_speed(feats), self.head_doc(feats)
+
+    def predict_feed(self, img):
+        """Inference-only: returns only the feed logits."""
+        with torch.no_grad():
+            feats = self.backbone(img)
+            return self.head_feed(feats)
+
+
+def train_epoch_multitask(model, loader, criterion, optimizer, device,
+                          lambda_speed=0.5, lambda_doc=0.3):
+    model.train()
+    total_loss, correct, n = 0.0, 0, 0
+    for imgs, feed_lbl, speed_lbl, doc_lbl in loader:
+        imgs      = imgs.to(device)
+        feed_lbl  = feed_lbl.to(device)
+        speed_lbl = speed_lbl.to(device)
+        doc_lbl   = doc_lbl.to(device)
+        optimizer.zero_grad()
+        out_feed, out_speed, out_doc = model(imgs)
+        loss = (criterion(out_feed,  feed_lbl)
+                + lambda_speed * criterion(out_speed, speed_lbl)
+                + lambda_doc   * criterion(out_doc,   doc_lbl))
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item() * len(feed_lbl)
+        correct    += (out_feed.argmax(1) == feed_lbl).sum().item()
+        n          += len(feed_lbl)
+    return total_loss / n, correct / n
+
+
+@torch.no_grad()
+def eval_epoch_multitask(model, loader, criterion, device,
+                         lambda_speed=0.5, lambda_doc=0.3):
+    model.eval()
+    total_loss, correct, n = 0.0, 0, 0
+    for imgs, feed_lbl, speed_lbl, doc_lbl in loader:
+        imgs      = imgs.to(device)
+        feed_lbl  = feed_lbl.to(device)
+        speed_lbl = speed_lbl.to(device)
+        doc_lbl   = doc_lbl.to(device)
+        out_feed, out_speed, out_doc = model(imgs)
+        loss = (criterion(out_feed,  feed_lbl)
+                + lambda_speed * criterion(out_speed, speed_lbl)
+                + lambda_doc   * criterion(out_doc,   doc_lbl))
+        total_loss += loss.item() * len(feed_lbl)
+        correct    += (out_feed.argmax(1) == feed_lbl).sum().item()
+        n          += len(feed_lbl)
+    return total_loss / n, correct / n
+
+
 class MILModel(nn.Module):
     """ResNet18 backbone + attention pooling over windows + classifier head."""
     def __init__(self, num_classes, freeze_backbone=False, dropout=0.0):
@@ -643,6 +737,12 @@ def main():
     parser.add_argument("--split",          default="standard",
                         choices=["standard", "balanced"],
                         help="Test split: standard (original) or balanced (3/class speed, 5+5+4 DOC)")
+    parser.add_argument("--multitask",      action="store_true",
+                        help="Multi-task: shared backbone + feed head (primary) + speed/DOC heads (auxiliary). Only for feed/feed_coarse targets.")
+    parser.add_argument("--lambda_speed",   type=float, default=0.5,
+                        help="Weight for auxiliary speed loss in multi-task training")
+    parser.add_argument("--lambda_doc",     type=float, default=0.3,
+                        help="Weight for auxiliary DOC loss in multi-task training")
     args = parser.parse_args()
 
     seed_everything(SEED)
@@ -759,6 +859,98 @@ def main():
                 all_preds.extend(preds)
                 all_labels.extend(labels.tolist())
         print("\nPer-class test results (best model):")
+        for c, name in class_names.items():
+            idx = [i for i, l in enumerate(all_labels) if l == c]
+            if idx:
+                correct  = sum(all_preds[i] == all_labels[i] for i in idx)
+                wrong_as = [all_preds[i] for i in idx if all_preds[i] != all_labels[i]]
+                detail   = f"  predicted as {wrong_as}" if wrong_as else ""
+                print(f"  class {c} ({name}): {correct}/{len(idx)}{detail}")
+        return
+
+    if args.multitask:
+        if args.target not in ("feed", "feed_coarse"):
+            print("--multitask only applies to feed / feed_coarse targets")
+            return
+        if args.save == "best_model.pt":
+            args.save = f"best_{args.target}_multitask.pt"
+
+        # Load images with all three labels (feed, speed, DOC)
+        (tr_p, tr_l, tr_spd, tr_doc), (te_p, te_l, te_spd, te_doc) = \
+            load_split_conditioned(img_dir, label_map, test_runs, SPEED_LABELS, DOC_LABELS)
+
+        # Optionally load SMOTE synthetics
+        smote_cond = load_smote_cond_map(img_dir)
+        if smote_cond:
+            if args.target == "feed_coarse":
+                smote_cond = {r: (lbl // 2, spd, doc) for r, (lbl, spd, doc) in smote_cond.items()}
+            for run, (lbl, spd, doc) in smote_cond.items():
+                for png in sorted(img_dir.glob(f"{run}_w*.png")):
+                    tr_p.append(png); tr_l.append(lbl)
+                    tr_spd.append(spd); tr_doc.append(doc)
+            print(f"  SMOTE: {len(smote_cond)} synthetic runs loaded")
+
+        print(f"\nTarget: {args.target} [multi-task: feed+speed+DOC]"
+              f"  |  Train: {len(tr_p)} images | Test: {len(te_p)} images")
+        for c, name in class_names.items():
+            print(f"  class {c} ({name}): {tr_l.count(c)} train / {te_l.count(c)} test")
+        if not tr_p:
+            print("No training images found. Run scalogram.py first.")
+            return
+
+        print(f"\nConfig: MultiTaskModel  backbone={args.backbone}"
+              f"  lr={args.lr}  wd={args.weight_decay}"
+              f"  batch={args.batch}  epochs={args.epochs}"
+              f"  augment={args.augment}  scheduler={args.scheduler}"
+              f"  lambda_speed={args.lambda_speed}  lambda_doc={args.lambda_doc}")
+
+        train_tf, val_tf = build_transforms(args.augment)
+        train_ds = ConditionedScalogramDataset(tr_p, tr_l, tr_spd, tr_doc, train_tf)
+        test_ds  = ConditionedScalogramDataset(te_p, te_l, te_spd, te_doc, val_tf)
+        train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True,  num_workers=0)
+        test_dl  = DataLoader(test_ds,  batch_size=args.batch, shuffle=False, num_workers=0)
+
+        if args.weighted_loss:
+            print("WARNING: --weighted_loss is not supported in --multitask mode; using uniform weights.")
+        model = MultiTaskModel(args.backbone, num_classes,
+                               dropout=args.dropout).to(device)
+        criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smooth)
+        opt_cls   = torch.optim.AdamW if args.optimizer == "adamw" else torch.optim.Adam
+        optimizer = opt_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        scheduler = build_scheduler(args.scheduler, optimizer, args.epochs)
+
+        print(f"\n{'Epoch':>5} {'Train Loss':>10} {'FeedAcc(tr)':>12} "
+              f"{'Test Loss':>10} {'FeedAcc(te)':>12}")
+        print("-" * 56)
+
+        best_test_acc = 0.0
+        for epoch in range(1, args.epochs + 1):
+            tr_loss, tr_acc = train_epoch_multitask(
+                model, train_dl, criterion, optimizer, device,
+                args.lambda_speed, args.lambda_doc)
+            te_loss, te_acc = eval_epoch_multitask(
+                model, test_dl, criterion, device,
+                args.lambda_speed, args.lambda_doc)
+            scheduler.step()
+            if te_acc > best_test_acc:
+                best_test_acc = te_acc
+                torch.save(model.state_dict(), args.save)
+            print(f"{epoch:>5} {tr_loss:>10.4f} {tr_acc:>12.3f} "
+                  f"{te_loss:>10.4f} {te_acc:>12.3f}", flush=True)
+
+        print(f"\nBest feed test accuracy: {best_test_acc:.3f}")
+        print(f"Model saved to {args.save}")
+
+        model.load_state_dict(torch.load(args.save, map_location=device))
+        model.eval()
+        all_preds, all_labels = [], []
+        with torch.no_grad():
+            for imgs, feed_lbl, speed_lbl, doc_lbl in test_dl:
+                out_feed, _, _ = model(imgs.to(device))
+                preds = out_feed.argmax(1).cpu().tolist()
+                all_preds.extend(preds)
+                all_labels.extend(feed_lbl.tolist())
+        print("\nPer-class feed results (best model):")
         for c, name in class_names.items():
             idx = [i for i, l in enumerate(all_labels) if l == c]
             if idx:

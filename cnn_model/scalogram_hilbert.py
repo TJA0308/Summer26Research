@@ -1,5 +1,5 @@
 """
-4-channel CWT scalogram generator: raw signal + Hilbert envelope for ai4 and ai6.
+4-channel CWT scalogram generator: raw signal + squared envelope (SES) for ai4 and ai6.
 
 Produces per-window .npy arrays of shape (4, IMG_SIZE, IMG_SIZE) float32 [0, 1]
 and 2x2 composite PNG previews for inspection.
@@ -7,8 +7,8 @@ and 2x2 composite PNG previews for inspection.
 Channel layout (index 0-3, same order in .npy and PNG quadrants):
     0 / top-left     : ai4 raw CWT
     1 / top-right    : ai6 raw CWT
-    2 / bottom-left  : envelope(ai4) CWT
-    3 / bottom-right : envelope(ai6) CWT
+    2 / bottom-left  : SES(ai4) CWT  [squared envelope = |H{x}|^2]
+    3 / bottom-right : SES(ai6) CWT  [squared envelope = |H{x}|^2]
 
 Usage (run from project root):
     python cnn_model/scalogram_hilbert.py --input_dir data --output_dir scalograms_hilbert_10w --n_windows 10
@@ -54,10 +54,10 @@ CHANNELS = ["ai4", "ai6"]
 def compute_four_powers(df, fs_eff, f_min, f_max, n_freqs, sigma,
                         downsample, env_f_low=None, env_f_high=None):
     """
-    Compute 4 CWT power maps: [ai4_raw, ai6_raw, env_ai4, env_ai6].
+    Compute 4 CWT power maps: [ai4_raw, ai6_raw, ses_ai4, ses_ai6].
 
-    The envelope CWT captures amplitude-modulation structure (feed/DOC)
-    that is masked by spindle harmonics in the raw CWT.
+    The SES (squared envelope spectrum) channels use |H{x}|^2 before CWT,
+    which sharpens AM peaks and suppresses noise compared to the plain envelope.
     """
     powers = []
 
@@ -69,15 +69,15 @@ def compute_four_powers(df, fs_eff, f_min, f_max, n_freqs, sigma,
                                      f_min=f_min, f_max=f_max, sigma=sigma)
         powers.append(pw)
 
-    # Hilbert envelope CWT for each channel
+    # Squared envelope (SES) CWT for each channel
     for ch in CHANNELS:
         sig = df[ch].values[::downsample].astype(np.float32)
-        env = compute_envelope(sig, fs=fs_eff, f_low=env_f_low, f_high=env_f_high)
+        env = compute_envelope(sig, fs=fs_eff, f_low=env_f_low, f_high=env_f_high) ** 2
         pw, _ = analytic_morlet_cwt(env, fs=fs_eff, n_freqs=n_freqs,
                                      f_min=f_min, f_max=f_max, sigma=sigma)
         powers.append(pw)
 
-    return powers  # [ai4_raw, ai6_raw, env_ai4, env_ai6]
+    return powers  # [ai4_raw, ai6_raw, ses_ai4, ses_ai6]
 
 
 def powers_to_array(powers, img_size, global_ranges=None):
@@ -109,7 +109,7 @@ def build_preview_png(arr):
     _, h, w = arr.shape
     canvas = np.zeros((h * 2, w * 2, 3), dtype=np.uint8)
     positions = [(0, 0), (0, w), (h, 0), (h, w)]
-    labels = ["ai4_raw", "ai6_raw", "env_ai4", "env_ai6"]
+    labels = ["ai4_raw", "ai6_raw", "ses_ai4", "ses_ai6"]
     for idx, (r0, c0) in enumerate(positions):
         g = (arr[idx] * 255).astype(np.uint8)
         canvas[r0:r0 + h, c0:c0 + w, 0] = g
