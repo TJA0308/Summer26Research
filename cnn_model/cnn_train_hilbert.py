@@ -89,9 +89,6 @@ class NpyScalogramDataset(Dataset):
 
     def __getitem__(self, idx):
         arr = torch.from_numpy(np.load(self.paths[idx]))  # (4, H, W) float32 [0,1]
-        if self.augment:
-            if random.random() > 0.5:
-                arr = torch.flip(arr, dims=[2])   # random horizontal flip (time axis)
         return arr, self.labels[idx]
 
 
