@@ -30,21 +30,18 @@ sys.path.insert(0, str(Path(__file__).parent))
 from scalogram import FS, DOWNSAMPLE, F_MIN, F_MAX, N_FREQS, SIGMA, IMG_SIZE
 from scalogram_hilbert import CHANNELS, compute_four_powers, powers_to_array
 from cnn_train import (
-    SPEED_LABELS, FEED_LABELS, FEED_TEST_RUNS, FEED_COARSE_LABELS,
+    SPEED_LABELS, FEED_TEST_RUNS, FEED_COARSE_LABELS,
     DOC_LABELS, RA_LABELS, RA_TEST_RUNS,
 )
-from cnn_train_hilbert import (SPEED_TEST_RUNS_H, DOC_TEST_RUNS_H,
-                               FEED5_LABELS, FEED5_TEST_RUNS)
+from cnn_train_hilbert import SPEED_TEST_RUNS_H, DOC_TEST_RUNS_H
 
 SEED = 42
 
 TARGET_CONFIG = {
-    "speed":       (SPEED_LABELS,       SPEED_TEST_RUNS_H, "smote_hs",   "smote_h_speed_labels.csv"),
-    "doc":         (DOC_LABELS,         DOC_TEST_RUNS_H,   "smote_hd",   "smote_h_doc_labels.csv"),
-    "feed":        (FEED_LABELS,        FEED_TEST_RUNS,    "smote_hf",   "smote_h_feed_labels.csv"),
-    "feed5":       (FEED5_LABELS,       FEED5_TEST_RUNS,   "smote_hf5",  "smote_h_feed5_labels.csv"),
-    "feed_coarse": (FEED_COARSE_LABELS, FEED_TEST_RUNS,    "smote_hfc",  "smote_h_feed_coarse_labels.csv"),
-    "roughness":   (RA_LABELS,          RA_TEST_RUNS,      "smote_hr",   "smote_h_roughness_labels.csv"),
+    "speed":       (SPEED_LABELS,       SPEED_TEST_RUNS_H, "smote_hs",  "smote_h_speed_labels.csv"),
+    "doc":         (DOC_LABELS,         DOC_TEST_RUNS_H,   "smote_hd",  "smote_h_doc_labels.csv"),
+    "feed_coarse": (FEED_COARSE_LABELS, FEED_TEST_RUNS,    "smote_hfc", "smote_h_feed_coarse_labels.csv"),
+    "roughness":   (RA_LABELS,          RA_TEST_RUNS,      "smote_hr",  "smote_h_roughness_labels.csv"),
 }
 
 
@@ -90,7 +87,7 @@ def main():
     )
     parser.add_argument("--data_dir",     required=True,  help="Raw CSV directory")
     parser.add_argument("--output_dir",   required=True,  help="Hilbert .npy scalogram directory")
-    parser.add_argument("--target",       default="feed5", choices=list(TARGET_CONFIG.keys()))
+    parser.add_argument("--target",       default="speed", choices=list(TARGET_CONFIG.keys()))
     parser.add_argument("--n_synthetic",  type=int, default=4,
                         help="Synthetic interpolations to generate per same-class run pair")
     parser.add_argument("--n_windows",    type=int, default=10,

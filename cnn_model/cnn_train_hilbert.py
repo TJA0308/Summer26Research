@@ -1,19 +1,18 @@
 """
-Train a CNN on 4-channel (raw + Hilbert envelope) CWT scalograms.
+Train a CNN on 4-channel SES (Squared Envelope Spectrum) CWT scalograms.
 
 Scalograms must be generated first:
-    python cnn_model/scalogram_hilbert.py --input_dir data --output_dir scalograms_hilbert_10w --n_windows 10
+    python cnn_model/scalogram_hilbert.py --input_dir data --output_dir scalograms_ses_10w --n_windows 10
 
 Channel layout (produced by scalogram_hilbert.py):
     ch 0: ai4 raw CWT
     ch 1: ai6 raw CWT
-    ch 2: envelope(ai4) CWT
-    ch 3: envelope(ai6) CWT
+    ch 2: SES(ai4) CWT  [squared envelope |H{x}|^2]
+    ch 3: SES(ai6) CWT  [squared envelope |H{x}|^2]
 
-Larger test sets than cnn_train.py — each class now has full DOC-level coverage:
+Larger test sets than cnn_train.py — each class has full DOC-level coverage:
     Speed : 15 test (3/class × 5 classes, one per DOC)  | 30 train
     DOC   : 14 test (5+5+4 across all speeds)            | 31 train
-    Feed  : 6  test (unchanged)                          | 39 train
 """
 
 import argparse
@@ -31,7 +30,7 @@ from torchvision import models
 sys.path.insert(0, str(Path(__file__).parent))
 from cnn_train import (
     SPEED_LABELS, SPEED_NAMES,
-    FEED_LABELS,  FEED_NAMES, FEED_TEST_RUNS,
+    FEED_TEST_RUNS,
     FEED_COARSE_LABELS, FEED_COARSE_NAMES,
     DOC_LABELS,   DOC_NAMES,
     RA_LABELS,    RA_NAMES, RA_TEST_RUNS,
@@ -56,16 +55,8 @@ DOC_TEST_RUNS_H = {
     "run22", "run29", "run36", "run25",           # 0.060 mm: 1500,3000,5000,2000 rpm
 }
 
-# ── Feed: unchanged (6 test, 39 train) ────────────────────────────────────
-FEED_TEST_RUNS_H        = FEED_TEST_RUNS
+# ── Feed coarse: unchanged (6 test, 39 train) ─────────────────────────────
 FEED_COARSE_TEST_RUNS_H = FEED_TEST_RUNS
-
-# ── Feed 5-class: drop class 5 (8 mm/rev) which has only 2 training runs ──
-# run6, run21, run36 are the only class-5 runs; run36 is the test run.
-FEED5_LABELS   = {run: lbl for run, lbl in FEED_LABELS.items() if lbl != 5}
-FEED5_NAMES    = {0: "3 mm/rev", 1: "4 mm/rev", 2: "5 mm/rev",
-                  3: "6 mm/rev", 4: "7 mm/rev"}
-FEED5_TEST_RUNS = FEED_TEST_RUNS - {"run36"}  # 5 test runs, 37 train runs
 
 
 def seed_everything(seed):
@@ -77,12 +68,11 @@ def seed_everything(seed):
 # ── Dataset ────────────────────────────────────────────────────────────────
 
 class NpyScalogramDataset(Dataset):
-    """Loads (4, H, W) float32 .npy arrays and applies optional augmentation."""
+    """Loads (4, H, W) float32 .npy arrays."""
 
-    def __init__(self, paths, labels, augment=False):
-        self.paths   = paths
-        self.labels  = labels
-        self.augment = augment
+    def __init__(self, paths, labels):
+        self.paths  = paths
+        self.labels = labels
 
     def __len__(self):
         return len(self.paths)
@@ -231,7 +221,7 @@ def main():
     parser.add_argument("--img_dir",      required=True,
                         help="Directory of .npy scalogram files (from scalogram_hilbert.py)")
     parser.add_argument("--target",       default="speed",
-                        choices=["speed", "doc", "feed", "feed5", "feed_coarse", "roughness"])
+                        choices=["speed", "doc", "feed_coarse", "roughness"])
     parser.add_argument("--backbone",     default="resnet18",
                         choices=["resnet18", "resnet50", "efficientnet_b0", "convnext_tiny"])
     parser.add_argument("--epochs",       type=int,   default=20)
@@ -242,8 +232,6 @@ def main():
                         choices=["cosine", "cosine_warm", "step", "none"])
     parser.add_argument("--optimizer",    default="adamw", choices=["adam", "adamw"])
     parser.add_argument("--dropout",      type=float, default=0.0)
-    parser.add_argument("--augment",      action="store_true",
-                        help="Apply random horizontal flip during training")
     parser.add_argument("--weighted_loss", action="store_true")
     parser.add_argument("--freeze",       action="store_true",
                         help="Freeze backbone, train head only")
@@ -266,14 +254,6 @@ def main():
         label_map, class_names, test_runs, num_classes = (
             DOC_LABELS, DOC_NAMES, DOC_TEST_RUNS_H, 3)
         default_save = f"hilbert_doc_{args.backbone}.pt"
-    elif args.target == "feed":
-        label_map, class_names, test_runs, num_classes = (
-            FEED_LABELS, FEED_NAMES, FEED_TEST_RUNS_H, 6)
-        default_save = f"hilbert_feed_{args.backbone}.pt"
-    elif args.target == "feed5":
-        label_map, class_names, test_runs, num_classes = (
-            FEED5_LABELS, FEED5_NAMES, FEED5_TEST_RUNS, 5)
-        default_save = f"hilbert_feed5_{args.backbone}.pt"
     elif args.target == "feed_coarse":
         label_map, class_names, test_runs, num_classes = (
             FEED_COARSE_LABELS, FEED_COARSE_NAMES, FEED_COARSE_TEST_RUNS_H, 3)
@@ -288,8 +268,6 @@ def main():
     smote_csv_names = {
         "speed":       "smote_h_speed_labels.csv",
         "doc":         "smote_h_doc_labels.csv",
-        "feed":        "smote_h_feed_labels.csv",
-        "feed5":       "smote_h_feed5_labels.csv",
         "feed_coarse": "smote_h_feed_coarse_labels.csv",
         "roughness":   "smote_h_roughness_labels.csv",
     }
@@ -320,10 +298,10 @@ def main():
     print(f"\nConfig: backbone={args.backbone}  lr={args.lr}  wd={args.weight_decay}"
           f"  batch={args.batch}  epochs={args.epochs}"
           f"  optimizer={args.optimizer}  scheduler={args.scheduler}"
-          f"  dropout={args.dropout}  augment={args.augment}  freeze={args.freeze}")
+          f"  dropout={args.dropout}  freeze={args.freeze}")
 
-    train_ds = NpyScalogramDataset(train_paths, train_labels, augment=args.augment)
-    test_ds  = NpyScalogramDataset(test_paths,  test_labels,  augment=False)
+    train_ds = NpyScalogramDataset(train_paths, train_labels)
+    test_ds  = NpyScalogramDataset(test_paths,  test_labels)
     train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True,  num_workers=0)
     test_dl  = DataLoader(test_ds,  batch_size=args.batch, shuffle=False, num_workers=0)
 
