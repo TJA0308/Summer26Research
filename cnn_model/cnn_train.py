@@ -83,6 +83,12 @@ FEED_TEST_RUNS = {
 FEED_COARSE_LABELS = {k: v // 2 for k, v in FEED_LABELS.items()}
 FEED_COARSE_NAMES  = {0: "3-4 mm/rev (low)", 1: "5-6 mm/rev (med)", 2: "7-8 mm/rev (high)"}
 FEED_COARSE_TEST_RUNS = FEED_TEST_RUNS   # same test runs, labels remapped
+# 4 per class = 12 test, 33 train
+FEED_COARSE_TEST_RUNS_12 = {
+    "run25", "run13", "run7",  "run37",  # Low  (3-4 mm/rev): 2000rpm DOC=0.060, 3000rpm DOC=0.030, 1500rpm DOC=0.030, 1500rpm DOC=0.015
+    "run31", "run17", "run9",  "run45",  # Med  (5-6 mm/rev): 4000rpm DOC=0.060, 4000rpm DOC=0.030, 1500rpm DOC=0.030, 3000rpm DOC=0.015
+    "run5",  "run36", "run3",  "run21",  # High (7-8 mm/rev): 5000rpm DOC=0.015, 5000rpm DOC=0.060, 4000rpm DOC=0.015, 5000rpm DOC=0.030
+}
 
 # ── Depth-of-cut prediction ───────────────────────────────────────────────
 DOC_LABELS = {
@@ -109,11 +115,17 @@ DOC_TEST_RUNS = {
     "run7",  "run14", "run19",   # class 1 (0.030): 1500rpm, 3000rpm, 5000rpm
     "run22", "run29", "run36",   # class 2 (0.060): 1500rpm, 3000rpm, 5000rpm
 }
-# Balanced split: 5+5+4 = 14 test, 31 train
+# Balanced split: 5+5+4 = 14 test, 31 train (legacy)
 DOC_TEST_RUNS_BALANCED = {
     "run1",  "run5",  "run43", "run38", "run41",  # 0.015: 4000,5000,3000,1500,2000 rpm
     "run7",  "run14", "run19", "run11", "run16",  # 0.030: 1500,3000,5000,2000,4000 rpm
     "run22", "run29", "run36", "run25",           # 0.060: 1500,3000,5000,2000 rpm
+}
+# 4 per class = 12 test, 33 train
+DOC_TEST_RUNS_12 = {
+    "run1",  "run5",  "run38", "run41",   # 0.015 mm: 4000,5000,1500,2000 rpm
+    "run7",  "run14", "run16", "run19",   # 0.030 mm: 1500,3000,4000,5000 rpm
+    "run22", "run25", "run29", "run36",   # 0.060 mm: 1500,2000,3000,5000 rpm
 }
 
 # ── Surface roughness prediction (Ra μm) ─────────────────────────────────
@@ -144,6 +156,12 @@ RA_TEST_RUNS = {
     "run5",  "run43",   # Smooth: DOC=0.015 5000rpm, 3000rpm
     "run7",  "run27",   # Medium: DOC=0.030 1500rpm, DOC=0.060 2000rpm
     "run22", "run34",   # Rough:  DOC=0.060 1500rpm, 5000rpm
+}
+# 4 per class = 12 test, 33 train
+RA_TEST_RUNS_12 = {
+    "run5",  "run43", "run38", "run40",  # Smooth: 5000/3000/1500/2000 rpm, all DOC=0.015
+    "run7",  "run27", "run11", "run19",  # Medium: 1500rpm DOC=0.030, 2000rpm DOC=0.060, 2000rpm DOC=0.030, 5000rpm DOC=0.030
+    "run22", "run34", "run28", "run32",  # Rough:  1500/5000/3000/4000 rpm, all DOC=0.060
 }
 
 # Legacy aliases (used by load_split default path)
@@ -759,21 +777,21 @@ def main():
     elif args.target == "feed_coarse":
         label_map   = FEED_COARSE_LABELS
         class_names = FEED_COARSE_NAMES
-        test_runs   = FEED_COARSE_TEST_RUNS
+        test_runs   = FEED_COARSE_TEST_RUNS_12 if args.split == "balanced" else FEED_COARSE_TEST_RUNS
         num_classes = 3
         if args.save == "best_model.pt":
             args.save = "best_model_feed_coarse.pt"
     elif args.target == "doc":
         label_map   = DOC_LABELS
         class_names = DOC_NAMES
-        test_runs   = DOC_TEST_RUNS_BALANCED if args.split == "balanced" else DOC_TEST_RUNS
+        test_runs   = DOC_TEST_RUNS_12 if args.split == "balanced" else DOC_TEST_RUNS
         num_classes = 3
         if args.save == "best_model.pt":
             args.save = "best_model_doc.pt"
     elif args.target == "roughness":
         label_map   = RA_LABELS
         class_names = RA_NAMES
-        test_runs   = RA_TEST_RUNS
+        test_runs   = RA_TEST_RUNS_12 if args.split == "balanced" else RA_TEST_RUNS
         num_classes = 3
         if args.save == "best_model.pt":
             args.save = "best_model_roughness.pt"

@@ -10,9 +10,11 @@ Channel layout (produced by scalogram_hilbert.py):
     ch 2: SES(ai4) CWT  [squared envelope |H{x}|^2]
     ch 3: SES(ai6) CWT  [squared envelope |H{x}|^2]
 
-Larger test sets than cnn_train.py — each class has full DOC-level coverage:
-    Speed : 15 test (3/class × 5 classes, one per DOC)  | 30 train
-    DOC   : 14 test (5+5+4 across all speeds)            | 31 train
+Balanced test sets — 30/15 split for speed, 33/12 for all 3-class targets:
+    Speed      : 15 test (3/class × 5 RPM classes, one per DOC level) | 30 train
+    DOC        : 12 test (4/class × 3 DOC levels)                      | 33 train
+    Roughness  : 12 test (4/class × 3 Ra classes)                      | 33 train
+    Feed coarse: 12 test (4/class × 3 feed classes)                    | 33 train
 """
 
 import argparse
@@ -31,9 +33,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from cnn_train import (
     SPEED_LABELS, SPEED_NAMES,
     FEED_TEST_RUNS,
-    FEED_COARSE_LABELS, FEED_COARSE_NAMES,
+    FEED_COARSE_LABELS, FEED_COARSE_NAMES, FEED_COARSE_TEST_RUNS_12,
     DOC_LABELS,   DOC_NAMES,
-    RA_LABELS,    RA_NAMES, RA_TEST_RUNS,
+    RA_LABELS,    RA_NAMES, RA_TEST_RUNS, RA_TEST_RUNS_12,
     build_scheduler,
 )
 
@@ -48,15 +50,15 @@ SPEED_TEST_RUNS_H = {
     "run5",  "run19", "run36",   # 5000 rpm: DOC 0.015, 0.030, 0.060
 }
 
-# ── DOC: 14 test (5+5+4 across all speeds), 31 train ──────────────────────
+# ── DOC: 12 test (4/class), 33 train ──────────────────────────────────────
 DOC_TEST_RUNS_H = {
-    "run1",  "run5",  "run43", "run38", "run41",  # 0.015 mm: 4000,5000,3000,1500,2000 rpm
-    "run7",  "run14", "run19", "run11", "run16",  # 0.030 mm: 1500,3000,5000,2000,4000 rpm
-    "run22", "run29", "run36", "run25",           # 0.060 mm: 1500,3000,5000,2000 rpm
+    "run1",  "run5",  "run38", "run41",   # 0.015 mm: 4000,5000,1500,2000 rpm
+    "run7",  "run14", "run16", "run19",   # 0.030 mm: 1500,3000,4000,5000 rpm
+    "run22", "run25", "run29", "run36",   # 0.060 mm: 1500,2000,3000,5000 rpm
 }
 
-# ── Feed coarse: unchanged (6 test, 39 train) ─────────────────────────────
-FEED_COARSE_TEST_RUNS_H = FEED_TEST_RUNS
+# ── Feed coarse: 12 test (4/class), 33 train ──────────────────────────────
+FEED_COARSE_TEST_RUNS_H = FEED_COARSE_TEST_RUNS_12
 
 
 def seed_everything(seed):
@@ -260,7 +262,7 @@ def main():
         default_save = f"hilbert_feed_coarse_{args.backbone}.pt"
     else:  # roughness
         label_map, class_names, test_runs, num_classes = (
-            RA_LABELS, RA_NAMES, RA_TEST_RUNS, 3)
+            RA_LABELS, RA_NAMES, RA_TEST_RUNS_12, 3)
         default_save = f"hilbert_roughness_{args.backbone}.pt"
 
     save_path = args.save or default_save
