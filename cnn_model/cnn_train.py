@@ -1,4 +1,5 @@
 import argparse
+import json
 import random
 from pathlib import Path
 
@@ -31,16 +32,8 @@ SPEED_LABELS = {
     "run43": 2, "run44": 2, "run45": 2,  # 3000 rpm  DOC=0.015
 }
 SPEED_NAMES = {0: "1500 rpm", 1: "2000 rpm", 2: "3000 rpm", 3: "4000 rpm", 4: "5000 rpm"}
-# 2 test runs per class (classes 0-3), 1 for class 4: 9 test total, 36 train total
-SPEED_TEST_RUNS = {
-    "run9",  "run22",  # class 0 (1500 rpm): DOC=0.030, 0.060
-    "run12", "run27",  # class 1 (2000 rpm): DOC=0.030, 0.060
-    "run15", "run28",  # class 2 (3000 rpm): DOC=0.030, 0.060
-    "run2",  "run16",  # class 3 (4000 rpm): DOC=0.015, 0.030
-    "run5",  "run36",  # class 4 (5000 rpm): DOC=0.015, 0.060  → 10 test, 35 train
-}
 # Balanced split: 3 per class × 5 RPM classes (one per DOC level) = 15 test, 30 train
-SPEED_TEST_RUNS_BALANCED = {
+SPEED_TEST_RUNS= {
     "run9",  "run22", "run37",   # 1500 rpm: DOC=0.030, 0.060, 0.015
     "run12", "run27", "run40",   # 2000 rpm: DOC=0.030, 0.060, 0.015
     "run15", "run28", "run43",   # 3000 rpm: DOC=0.030, 0.060, 0.015
@@ -67,28 +60,21 @@ FEED_LABELS = {
     "run40": 0,  "run41": 1,  "run42": 2,   # DOC=0.015, 2000rpm, feed=3,4,5
     "run43": 1,  "run44": 2,  "run45": 3,   # DOC=0.015, 3000rpm, feed=4,5,6
 }
-FEED_NAMES = {0: "3 mm/rev", 1: "4 mm/rev", 2: "5 mm/rev", 3: "6 mm/rev", 4: "7 mm/rev", 5: "8 mm/rev"}
-# 1 test run per class, spread across diverse DOC/speed conditions: 6 test, 39 train
-FEED_TEST_RUNS = {
-    "run25",  # class 0 (3 mm/rev): DOC=0.060, 2000rpm
-    "run13",  # class 1 (4 mm/rev): DOC=0.030, 3000rpm
-    "run31",  # class 2 (5 mm/rev): DOC=0.060, 4000rpm
-    "run17",  # class 3 (6 mm/rev): DOC=0.030, 4000rpm
-    "run5",   # class 4 (7 mm/rev): DOC=0.015, 5000rpm
-    "run36",  # class 5 (8 mm/rev): DOC=0.060, 5000rpm
-}
 
 # ── Coarsened feed rate (3-class: low/medium/high) ───────────────────────
 # Groups: 0=low(3-4mm/rev), 1=medium(5-6mm/rev), 2=high(7-8mm/rev)
 FEED_COARSE_LABELS = {k: v // 2 for k, v in FEED_LABELS.items()}
-FEED_COARSE_NAMES  = {0: "3-4 mm/rev (low)", 1: "5-6 mm/rev (med)", 2: "7-8 mm/rev (high)"}
-FEED_COARSE_TEST_RUNS = FEED_TEST_RUNS   # same test runs, labels remapped
+FEED_COARSE_NAMES  = {0: "3-4 mm/rev (low)", 1: "5-6 mm/rev (med)", 2: "7-8 mm/rev (high)"}  # same test runs, labels remapped
 # 4 per class = 12 test, 33 train
-FEED_COARSE_TEST_RUNS_12 = {
+FEED_COARSE_TEST_RUNS = {
     "run25", "run13", "run7",  "run37",  # Low  (3-4 mm/rev): 2000rpm DOC=0.060, 3000rpm DOC=0.030, 1500rpm DOC=0.030, 1500rpm DOC=0.015
     "run31", "run17", "run9",  "run45",  # Med  (5-6 mm/rev): 4000rpm DOC=0.060, 4000rpm DOC=0.030, 1500rpm DOC=0.030, 3000rpm DOC=0.015
     "run5",  "run36", "run3",  "run21",  # High (7-8 mm/rev): 5000rpm DOC=0.015, 5000rpm DOC=0.060, 4000rpm DOC=0.015, 5000rpm DOC=0.030
 }
+
+# 6-class fine-grained feed (placeholder; use feed_coarse for 3-class experiments)
+FEED_NAMES     = {0: "3 mm/rev", 1: "4 mm/rev", 2: "5 mm/rev", 3: "6 mm/rev", 4: "7 mm/rev", 5: "8 mm/rev"}
+FEED_TEST_RUNS = FEED_COARSE_TEST_RUNS
 
 # ── Depth-of-cut prediction ───────────────────────────────────────────────
 DOC_LABELS = {
@@ -109,20 +95,8 @@ DOC_LABELS = {
     "run43": 0, "run44": 0, "run45": 0,  # DOC=0.015
 }
 DOC_NAMES = {0: "0.015 mm", 1: "0.03 mm", 2: "0.06 mm"}
-# 3 test per class from diverse speed combos: 9 test, 36 train
-DOC_TEST_RUNS = {
-    "run1",  "run5",  "run43",   # class 0 (0.015): 4000rpm, 5000rpm, 3000rpm
-    "run7",  "run14", "run19",   # class 1 (0.030): 1500rpm, 3000rpm, 5000rpm
-    "run22", "run29", "run36",   # class 2 (0.060): 1500rpm, 3000rpm, 5000rpm
-}
-# Balanced split: 5+5+4 = 14 test, 31 train (legacy)
-DOC_TEST_RUNS_BALANCED = {
-    "run1",  "run5",  "run43", "run38", "run41",  # 0.015: 4000,5000,3000,1500,2000 rpm
-    "run7",  "run14", "run19", "run11", "run16",  # 0.030: 1500,3000,5000,2000,4000 rpm
-    "run22", "run29", "run36", "run25",           # 0.060: 1500,3000,5000,2000 rpm
-}
 # 4 per class = 12 test, 33 train
-DOC_TEST_RUNS_12 = {
+DOC_TEST_RUNS = {
     "run1",  "run5",  "run38", "run41",   # 0.015 mm: 4000,5000,1500,2000 rpm
     "run7",  "run14", "run16", "run19",   # 0.030 mm: 1500,3000,4000,5000 rpm
     "run22", "run25", "run29", "run36",   # 0.060 mm: 1500,2000,3000,5000 rpm
@@ -151,12 +125,6 @@ RA_LABELS = {
     "run34": 2, "run35": 2, "run36": 2,   # Ra: 2.084, 1.980, 1.790
 }
 RA_NAMES = {0: "Smooth (Ra<0.7)", 1: "Medium (0.7-1.0)", 2: "Rough (Ra>1.0)"}
-# 2 test per class, spread across DOC/speed: 6 test, 39 train
-RA_TEST_RUNS = {
-    "run5",  "run43",   # Smooth: DOC=0.015 5000rpm, 3000rpm
-    "run7",  "run27",   # Medium: DOC=0.030 1500rpm, DOC=0.060 2000rpm
-    "run22", "run34",   # Rough:  DOC=0.060 1500rpm, 5000rpm
-}
 # 4 per class = 12 test, 33 train
 RA_TEST_RUNS_12 = {
     "run5",  "run43", "run38", "run40",  # Smooth: 5000/3000/1500/2000 rpm, all DOC=0.015
@@ -168,6 +136,12 @@ RA_TEST_RUNS_12 = {
 RUN_LABELS = SPEED_LABELS
 TEST_RUNS  = SPEED_TEST_RUNS
 TRAIN_RUNS = set(RUN_LABELS.keys()) - TEST_RUNS
+
+# Balanced-split aliases — these are already the 30/15 and 33/12 sets
+SPEED_TEST_RUNS_BALANCED = SPEED_TEST_RUNS      # 15 test (3/class × 5 RPM)
+DOC_TEST_RUNS_12         = DOC_TEST_RUNS        # 12 test (4/class × 3 DOC)
+RA_TEST_RUNS             = RA_TEST_RUNS_12      # 12 test (4/class × 3 Ra)
+FEED_COARSE_TEST_RUNS_12 = FEED_COARSE_TEST_RUNS  # 12 test (4/class × 3 feed)
 
 
 def seed_everything(seed):
@@ -761,6 +735,8 @@ def main():
                         help="Weight for auxiliary speed loss in multi-task training")
     parser.add_argument("--lambda_doc",     type=float, default=0.3,
                         help="Weight for auxiliary DOC loss in multi-task training")
+    parser.add_argument("--history",        default=None,
+                        help="Path to save per-epoch training history JSON (auto-derived from --save if omitted)")
     args = parser.parse_args()
 
     seed_everything(SEED)
@@ -1223,10 +1199,15 @@ def main():
     print("-" * 52)
 
     best_test_acc = 0.0
+    history = {"train_loss": [], "train_acc": [], "test_loss": [], "test_acc": []}
     for epoch in range(1, args.epochs + 1):
         tr_loss, tr_acc = train_epoch(model, train_dl, criterion, optimizer, device, args.mixup)
         te_loss, te_acc = eval_epoch(model, test_dl,  criterion, device)
         scheduler.step()
+        history["train_loss"].append(round(tr_loss, 6))
+        history["train_acc"].append(round(tr_acc, 6))
+        history["test_loss"].append(round(te_loss, 6))
+        history["test_acc"].append(round(te_acc, 6))
         if te_acc > best_test_acc:
             best_test_acc = te_acc
             torch.save(model.state_dict(), args.save)
@@ -1243,6 +1224,22 @@ def main():
 
     print(f"\nBest test accuracy: {best_test_acc:.3f}")
     print(f"Model saved to {args.save}")
+
+    history_path = args.history or args.save.replace(".pt", "_history.json")
+    Path(history_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(history_path, "w") as f:
+        json.dump({
+            "config": {
+                "target": args.target,
+                "backbone": args.backbone,
+                "lr": args.lr,
+                "epochs": args.epochs,
+                "optimizer": args.optimizer,
+                "scheduler": args.scheduler,
+            },
+            "history": history,
+        }, f, indent=2)
+    print(f"Training history saved to {history_path}")
 
     # Per-class breakdown using best saved model
     model.load_state_dict(torch.load(args.save, map_location=device))
