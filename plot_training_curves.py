@@ -308,7 +308,26 @@ def make_overfit_chart():
 # ── Main ───────────────────────────────────────────────────────────────────
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base_dir", default="exp_models",
+                        help="Directory containing *_history.json files")
+    parser.add_argument("--out_dir",  default=None,
+                        help="Output directory for PNGs (default: plots/ or plots_v2/ etc)")
+    args = parser.parse_args()
+
+    global BASE_DIR, OUT_DIR
+    BASE_DIR = Path(args.base_dir)
+    if args.out_dir:
+        OUT_DIR = Path(args.out_dir)
+    else:
+        # auto-name: exp_models -> plots, exp_models_v2 -> plots_v2
+        suffix = BASE_DIR.name.replace("exp_models", "")
+        OUT_DIR = Path(f"plots{suffix}")
+
     OUT_DIR.mkdir(exist_ok=True)
+    print(f"Reading from : {BASE_DIR}/")
+    print(f"Writing to   : {OUT_DIR}/\n")
 
     print("Accuracy + loss curves per target/pipeline:")
     for pipeline in PIPELINES:
