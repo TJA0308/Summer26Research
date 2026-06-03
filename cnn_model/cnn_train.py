@@ -1236,6 +1236,8 @@ def main():
                 "epochs": args.epochs,
                 "optimizer": args.optimizer,
                 "scheduler": args.scheduler,
+                "label_smooth": args.label_smooth,
+                "mixup": args.mixup,
             },
             "history": history,
         }, f, indent=2)
