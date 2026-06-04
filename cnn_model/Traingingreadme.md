@@ -46,25 +46,25 @@
 | A (Std CWT) | 30 | 6 | +2/class | 8 |
 | B (SES 4-ch) | 30 | 6 | +2/class | 8 |
 
-### Results — Pipeline A (Std CWT) — eval on 10-run holdout
+### Results — Pipeline A (Std CWT) — eval on 15-run test set (3/class × 5 RPM)
 
 | Backbone | lr=1e-3 | lr=1e-4 |
 |---------|:-------:|:-------:|
-| ResNet18 | **100.0%** | 90.0% |
-| ResNet50 | **100.0%** | 90.0% |
-| EfficientNet-B0 | 80.0% | 90.0% |
-| ConvNeXt-Tiny | 20.0% ❌ | 80.0% |
+| ResNet18 | 91.3% | 92.0% |
+| ResNet50 | **100.0%** | 96.7% |
+| EfficientNet-B0 | 91.3% | 86.7% |
+| ConvNeXt-Tiny | 20.0% ❌ | 90.0% |
 
-### Results — Pipeline B (SES 4-Channel) — eval on 15-run holdout
+### Results — Pipeline B (SES 4-Channel) — eval on 15-run test set (3/class × 5 RPM)
 
 | Backbone | lr=1e-3 | lr=1e-4 |
 |---------|:-------:|:-------:|
-| ResNet18 | 93.3% | 93.3% |
-| ResNet50 | 93.3% | 86.7% |
-| EfficientNet-B0 | 86.7% | 80.0% |
-| ConvNeXt-Tiny | 93.3% | 80.0% |
+| ResNet18 | 95.3% | 89.3% |
+| ResNet50 | 96.0% | 94.7% |
+| EfficientNet-B0 | 94.0% | 79.3% |
+| ConvNeXt-Tiny | 30.0% ❌ | 92.0% |
 
-### Per-Window — Pipeline A
+### Per-Window — Pipeline A (legacy holdout)
 
 **ResNet18 lr=1e-3** (std_speed_rn18_lr1e3) — Window: 98.0% | Run MV: **100.0%** (10/10)
 
@@ -211,7 +211,7 @@ Window accuracy: **76.0%** (76/100)
 Run MV accuracy: **80.0%** (8/10)
 
 
-### Per-Window — Pipeline B
+### Per-Window — Pipeline B (legacy holdout)
 
 **ResNet18 lr=1e-3** (ses_speed_rn18_lr1e3) — Window: 93.3% | Run MV: **93.3%** (14/15)
 
@@ -408,25 +408,25 @@ Run MV accuracy: **80.0%** (12/15)
 | A (Std CWT) | 33 | 11/11/11 (balanced) | none |
 | B (SES 4-ch) | 33 | 11/11/11 (balanced) | none |
 
-### Results — Pipeline A (Std CWT) — eval on 9-run holdout
+### Results — Pipeline A (Std CWT) — eval on 12-run test set (4/class × 3 DOC)
 
 | Backbone | lr=1e-3 | lr=1e-4 |
 |---------|:-------:|:-------:|
-| ResNet18 | 77.8% | 88.9% |
-| ResNet50 | 77.8% | 77.8% |
-| EfficientNet-B0 | 88.9% | **100.0%** |
-| ConvNeXt-Tiny | 33.3% ❌ | **100.0%** |
+| ResNet18 | 77.5% | 84.2% |
+| ResNet50 | 89.2% | 90.0% |
+| EfficientNet-B0 | 93.3% | 95.0% |
+| ConvNeXt-Tiny | 33.3% ❌ | 88.3% |
 
-### Results — Pipeline B (SES 4-Channel) — eval on 14-run holdout
+### Results — Pipeline B (SES 4-Channel) — eval on 12-run test set (4/class × 3 DOC)
 
 | Backbone | lr=1e-3 | lr=1e-4 |
 |---------|:-------:|:-------:|
-| ResNet18 | 85.7% | 85.7% |
-| ResNet50 | 78.6% | 78.6% |
-| EfficientNet-B0 | 85.7% | 78.6% |
-| ConvNeXt-Tiny | 35.7% ❌ | 78.6% |
+| ResNet18 | 88.3% | 78.3% |
+| ResNet50 | 87.5% | 88.3% |
+| EfficientNet-B0 | 95.0% | 77.5% |
+| ConvNeXt-Tiny | 33.3% ❌ | 81.7% |
 
-### Per-Window — Pipeline A
+### Per-Window — Pipeline A (legacy holdout)
 
 **ResNet18 lr=1e-3** (std_doc_rn18_lr1e3) — Window: 76.7% | Run MV: **77.8%** (7/9)
 
@@ -565,7 +565,7 @@ Window accuracy: **97.8%** (88/90)
 Run MV accuracy: **100.0%** (9/9)
 
 
-### Per-Window — Pipeline B
+### Per-Window — Pipeline B (legacy holdout)
 
 **ResNet18 lr=1e-3** (ses_doc_rn18_lr1e3) — Window: 80.7% | Run MV: **85.7%** (12/14)
 
@@ -754,25 +754,25 @@ Run MV accuracy: **78.6%** (11/14)
 | A (Std CWT) | 33 | ~19 Smooth / 7 Medium / 7 Rough | +SMOTE |
 | B (SES 4-ch) | 33 | ~19 Smooth / 7 Medium / 7 Rough | +SMOTE |
 
-### Results — Pipeline A (Std CWT) — eval on 6-run holdout
+### Results — Pipeline A (Std CWT) — eval on 12-run test set (4/class × 3 Ra)
 
 | Backbone | lr=1e-3 | lr=1e-4 |
 |---------|:-------:|:-------:|
-| ResNet18 | 83.3% | 83.3% |
-| ResNet50 | **100.0%** | 83.3% |
-| EfficientNet-B0 | 83.3% | 83.3% |
-| ConvNeXt-Tiny | 33.3% ❌ | 83.3% |
+| ResNet18 | 91.7% | 87.5% |
+| ResNet50 | 83.3% | 86.7% |
+| EfficientNet-B0 | 91.7% | 88.3% |
+| ConvNeXt-Tiny | 33.3% ❌ | 88.3% |
 
-### Results — Pipeline B (SES 4-Channel) — eval on 6-run holdout
+### Results — Pipeline B (SES 4-Channel) — eval on 12-run test set (4/class × 3 Ra)
 
 | Backbone | lr=1e-3 | lr=1e-4 |
 |---------|:-------:|:-------:|
-| ResNet18 | 83.3% | 83.3% |
+| ResNet18 | 83.3% | 80.8% |
 | ResNet50 | 83.3% | 83.3% |
-| EfficientNet-B0 | 83.3% | 83.3% |
-| ConvNeXt-Tiny | 33.3% ❌ | 83.3% |
+| EfficientNet-B0 | 85.8% | 76.7% |
+| ConvNeXt-Tiny | 64.2% | 83.3% |
 
-### Per-Window — Pipeline A
+### Per-Window — Pipeline A (legacy holdout)
 
 **ResNet18 lr=1e-3** (std_roughness_rn18_lr1e3) — Window: 81.7% | Run MV: **83.3%** (5/6)
 
@@ -887,7 +887,7 @@ Window accuracy: **83.3%** (50/60)
 Run MV accuracy: **83.3%** (5/6)
 
 
-### Per-Window — Pipeline B
+### Per-Window — Pipeline B (legacy holdout)
 
 **ResNet18 lr=1e-3** (ses_roughness_rn18_lr1e3) — Window: 75.0% | Run MV: **83.3%** (5/6)
 
@@ -1012,25 +1012,25 @@ Run MV accuracy: **83.3%** (5/6)
 | A (Std CWT) | 33 | 11 Low / 17 Med / 5 High | +SMOTE | ✓ |
 | B (SES 4-ch) | 33 | 11 Low / 17 Med / 5 High | +SMOTE | ✓ |
 
-### Results — Pipeline A (Std CWT) — eval on 6-run holdout
+### Results — Pipeline A (Std CWT) — eval on 12-run test set (4/class × 3 feed)
 
 | Backbone | lr=1e-3 | lr=1e-4 |
 |---------|:-------:|:-------:|
-| ResNet18 | 83.3% | 66.7% |
-| ResNet50 | 66.7% | 66.7% |
-| EfficientNet-B0 | 66.7% | 66.7% |
-| ConvNeXt-Tiny | 33.3% ❌ | 66.7% |
+| ResNet18 | 75.0% | 75.0% |
+| ResNet50 | 77.5% | 70.8% |
+| EfficientNet-B0 | 74.2% | 75.0% |
+| ConvNeXt-Tiny | 75.8% | 81.7% |
 
-### Results — Pipeline B (SES 4-Channel) — eval on 6-run holdout
+### Results — Pipeline B (SES 4-Channel) — eval on 12-run test set (4/class × 3 feed)
 
 | Backbone | lr=1e-3 | lr=1e-4 |
 |---------|:-------:|:-------:|
-| ResNet18 | 66.7% | 66.7% |
-| ResNet50 | 66.7% | 66.7% |
-| EfficientNet-B0 | 66.7% | 66.7% |
-| ConvNeXt-Tiny | 66.7% | 66.7% |
+| ResNet18 | 72.5% | 71.7% |
+| ResNet50 | 72.5% | 68.3% |
+| EfficientNet-B0 | 75.0% | 70.8% |
+| ConvNeXt-Tiny | 39.2% ❌ | 80.0% |
 
-### Per-Window — Pipeline A
+### Per-Window — Pipeline A (legacy holdout)
 
 **ResNet18 lr=1e-3** (std_feed_rn18_lr1e3) — Window: 78.3% | Run MV: **83.3%** (5/6)
 
@@ -1145,7 +1145,7 @@ Window accuracy: **65.0%** (39/60)
 Run MV accuracy: **66.7%** (4/6)
 
 
-### Per-Window — Pipeline B
+### Per-Window — Pipeline B (legacy holdout)
 
 **ResNet18 lr=1e-3** (ses_feed_rn18_lr1e3) — Window: 66.7% | Run MV: **66.7%** (4/6)
 
