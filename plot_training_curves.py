@@ -31,8 +31,10 @@ TGT_LABEL = {"speed":     "Speed (5-class, 30 ep)",
              "doc":       "DOC (3-class, 33 ep)",
              "roughness": "Roughness (3-class, 33 ep)",
              "feed":      "Feed Coarse (3-class, 33 ep)"}
-PIPELINES = ["std", "ses"]
-PL_LABEL  = {"std": "Pipeline A — Std CWT", "ses": "Pipeline B — SES 4-ch"}
+PIPELINES = ["std", "ses", "sesrgb"]
+PL_LABEL  = {"std":    "Pipeline A — Std CWT",
+             "ses":    "Pipeline B — SES 4-ch",
+             "sesrgb": "Pipeline C — SES-RGB"}
 
 # Colours: one per backbone, shade per LR
 BB_COLOR  = {"rn18": "#4C72B0", "rn50": "#DD8452",
@@ -217,11 +219,11 @@ def make_pipeline_comparison():
     both pipelines and both LRs as four test-accuracy curves."""
     for target in TARGETS:
         fig, axes = plt.subplots(2, 2, figsize=(13, 9), sharey=True)
-        fig.suptitle(f"Pipeline A vs B  ·  {TGT_LABEL[target]}  — Test Accuracy",
+        fig.suptitle(f"Pipeline A vs B vs C  ·  {TGT_LABEL[target]}  — Test Accuracy",
                      fontsize=13, fontweight="bold")
 
-        pl_color  = {"std": "#1f77b4", "ses": "#d62728"}
-        pl_ls     = {"std": "-", "ses": "--"}
+        pl_color  = {"std": "#1f77b4", "ses": "#d62728", "sesrgb": "#2ca02c"}
+        pl_ls     = {"std": "-", "ses": "--", "sesrgb": "-."}
 
         for ax, bb in zip(axes.flatten(), BACKBONES):
             ax.set_title(BB_LABEL[bb], fontsize=11)
@@ -283,7 +285,7 @@ def make_overfit_chart():
                     h = d["history"]
                     tr_final = h["train_acc"][-1]
                     te_best  = max(h["test_acc"])
-                    marker   = "o" if pipeline == "std" else "^"
+                    marker   = "o" if pipeline == "std" else ("^" if pipeline == "ses" else "s")
                     ax.scatter(tr_final, te_best,
                                color=BB_COLOR[bb],
                                marker=marker, s=45, alpha=0.8,
@@ -294,8 +296,9 @@ def make_overfit_chart():
             from matplotlib.patches import Patch
             from matplotlib.lines import Line2D
             bb_handles = [Patch(color=BB_COLOR[b], label=BB_LABEL[b]) for b in BACKBONES]
-            pl_handles = [Line2D([0], [0], marker="o", color="grey", lw=0, ms=7, label="Pipeline A"),
-                          Line2D([0], [0], marker="^", color="grey", lw=0, ms=7, label="Pipeline B")]
+            pl_handles = [Line2D([0], [0], marker="o", color="grey", lw=0, ms=7, label="Pipeline A (std)"),
+                          Line2D([0], [0], marker="^", color="grey", lw=0, ms=7, label="Pipeline B (ses)"),
+                          Line2D([0], [0], marker="s", color="grey", lw=0, ms=7, label="Pipeline C (sesrgb)")]
             ax.legend(handles=bb_handles + pl_handles, fontsize=7, loc="lower right")
 
     plt.tight_layout()
