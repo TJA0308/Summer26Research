@@ -230,6 +230,8 @@ def main():
                         choices=["resnet18", "resnet50", "efficientnet_b0", "convnext_tiny"])
     parser.add_argument("--pipeline", required=True,  choices=["a", "b"],
                         help="a=Std CWT (scalograms_10w), b=SES 4-ch (scalograms_ses_10w)")
+    parser.add_argument("--img_dir",  default=None,
+                        help="Override default image directory for pipeline a (e.g. scalograms_ses_rgb_10w)")
     parser.add_argument("--save_md",  default=None,
                         help="Optional path to save markdown output (e.g. results/model_name.md)")
     args = parser.parse_args()
@@ -246,7 +248,10 @@ def main():
 
     label_map, class_names, test_runs_a, test_runs_b, num_classes = TARGET_CFG[args.target]
     test_runs = test_runs_a if args.pipeline == "a" else test_runs_b
-    img_dir   = ROOT / ("scalograms_10w" if args.pipeline == "a" else "scalograms_ses_10w")
+    if args.img_dir:
+        img_dir = ROOT / args.img_dir
+    else:
+        img_dir = ROOT / ("scalograms_10w" if args.pipeline == "a" else "scalograms_ses_10w")
 
     # Load model
     if args.pipeline == "a":
