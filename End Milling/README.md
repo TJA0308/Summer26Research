@@ -346,11 +346,11 @@ All 6 runs correctly classified under both methods. Probability averaging makes 
 
 ---
 
-## Pipeline A & D — Systematic Sweep (96 models)
+## Pipeline A & D — Systematic Sweep (128 models)
 
 Systematic search over four backbone architectures, two learning rates, two data pipelines, and with/without SMOTE. All models use 10-window scalograms and the same held-out test runs; only training data differs between pipelines.
 
-- **Pipeline A** — standard RGB CWT scalograms (`scalograms_10w`) with signal-space SMOTE. 32 models (4 targets × 4 backbones × 2 LRs). Models: `exp_models_a/`, results: `exp_results_a/`.
+- **Pipeline A** — standard RGB CWT scalograms (`scalograms_10w`) with and without signal-space SMOTE. 64 models (4 targets × 4 backbones × 2 LRs × 2). SMOTE models: `exp_models_a/`, results: `exp_results_a/`. No-SMOTE results: `exp_results_v2/` (prefix `std_`).
 - **Pipeline D** — SES 4-channel scalograms (`scalograms_ses_10w`) with and without SMOTE. 64 models (4 targets × 4 backbones × 2 LRs × 2). Models: `exp_models_d/`, results: `exp_results_d/`.
 
 **Backbone key:** `rn18` = ResNet-18, `rn50` = ResNet-50, `enb0` = EfficientNet-B0, `cnxt` = ConvNeXt-Tiny. **LR key:** `lr1e3` = 1e-3, `lr1e4` = 1e-4. Win = window accuracy (10 windows × N test runs); Run = majority-vote run accuracy.
@@ -359,20 +359,20 @@ Systematic search over four backbone architectures, two learning rates, two data
 
 ### Spindle Speed (5-class, 15 test runs)
 
-#### Pipeline A — Standard RGB CWT + SMOTE
+#### Pipeline A — Standard RGB CWT (±SMOTE)
 
-| Model | Backbone | LR | Window Acc | Run Acc |
-|-------|----------|----|-----------|---------|
-| `std_smote_speed_rn18_lr1e3` | ResNet-18 | 1e-3 | **98.0%** | **100.0%** |
-| `std_smote_speed_rn18_lr1e4` | ResNet-18 | 1e-4 | 93.3% | 93.3% |
-| `std_smote_speed_rn50_lr1e3` | ResNet-50 | 1e-3 | **98.7%** | **100.0%** |
-| `std_smote_speed_rn50_lr1e4` | ResNet-50 | 1e-4 | 89.3% | 86.7% |
-| `std_smote_speed_enb0_lr1e3` | EfficientNet-B0 | 1e-3 | 83.3% | 86.7% |
-| `std_smote_speed_enb0_lr1e4` | EfficientNet-B0 | 1e-4 | 92.7% | 93.3% |
-| `std_smote_speed_cnxt_lr1e3` | ConvNeXt-Tiny | 1e-3 | 20.0% | 20.0% |
-| `std_smote_speed_cnxt_lr1e4` | ConvNeXt-Tiny | 1e-4 | 91.3% | 93.3% |
+| Backbone | LR | No-SMOTE Win | No-SMOTE Run | SMOTE Win | SMOTE Run |
+|----------|----|-------------|-------------|-----------|-----------|
+| ResNet-18 | 1e-3 | 91.3% | 93.3% | **98.0%** | **100.0%** |
+| ResNet-18 | 1e-4 | 92.0% | 93.3% | 93.3% | 93.3% |
+| ResNet-50 | 1e-3 | **100.0%** | **100.0%** | **98.7%** | **100.0%** |
+| ResNet-50 | 1e-4 | 96.7% | **100.0%** | 89.3% | 86.7% |
+| EfficientNet-B0 | 1e-3 | 91.3% | 93.3% | 83.3% | 86.7% |
+| EfficientNet-B0 | 1e-4 | 86.7% | 93.3% | 92.7% | 93.3% |
+| ConvNeXt-Tiny | 1e-3 | 20.0% | 20.0% | 20.0% | 20.0% |
+| ConvNeXt-Tiny | 1e-4 | 90.0% | 93.3% | 91.3% | 93.3% |
 
-ConvNeXt-Tiny at lr=1e-3 collapses to a degenerate 1-of-5 solution; all other models reach >=83% window accuracy. ResNet-18 and ResNet-50 at lr=1e-3 both hit 100% run accuracy.
+ConvNeXt-Tiny collapses at lr=1e-3 regardless of SMOTE. ResNet-50 at lr=1e-3 reaches 100% window and run accuracy without SMOTE; SMOTE has little effect on speed for Pipeline A.
 
 #### Pipeline D — SES 4-Channel (SMOTE has no effect on speed)
 
@@ -393,20 +393,20 @@ SMOTE produces identical results to no-SMOTE for all 8 backbone/LR combinations 
 
 ### Depth of Cut (3-class: 0.015 / 0.030 / 0.060 mm, 12 test runs)
 
-#### Pipeline A — Standard RGB CWT + SMOTE
+#### Pipeline A — Standard RGB CWT (±SMOTE)
 
-| Model | Backbone | LR | Window Acc | Run Acc |
-|-------|----------|----|-----------|---------|
-| `std_smote_doc_rn18_lr1e3` | ResNet-18 | 1e-3 | 90.0% | 91.7% |
-| `std_smote_doc_rn18_lr1e4` | ResNet-18 | 1e-4 | 85.8% | 91.7% |
-| `std_smote_doc_rn50_lr1e3` | ResNet-50 | 1e-3 | 82.5% | 83.3% |
-| `std_smote_doc_rn50_lr1e4` | ResNet-50 | 1e-4 | 85.8% | 91.7% |
-| `std_smote_doc_enb0_lr1e3` | EfficientNet-B0 | 1e-3 | **94.2%** | **100.0%** |
-| `std_smote_doc_enb0_lr1e4` | EfficientNet-B0 | 1e-4 | **95.0%** | **100.0%** |
-| `std_smote_doc_cnxt_lr1e3` | ConvNeXt-Tiny | 1e-3 | 33.3% | 33.3% |
-| `std_smote_doc_cnxt_lr1e4` | ConvNeXt-Tiny | 1e-4 | 83.3% | 91.7% |
+| Backbone | LR | No-SMOTE Win | No-SMOTE Run | SMOTE Win | SMOTE Run |
+|----------|----|-------------|-------------|-----------|-----------|
+| ResNet-18 | 1e-3 | 77.5% | 75.0% | 90.0% | 91.7% |
+| ResNet-18 | 1e-4 | 84.2% | 91.7% | 85.8% | 91.7% |
+| ResNet-50 | 1e-3 | 89.2% | 91.7% | 82.5% | 83.3% |
+| ResNet-50 | 1e-4 | 90.0% | 91.7% | 85.8% | 91.7% |
+| EfficientNet-B0 | 1e-3 | 93.3% | 91.7% | **94.2%** | **100.0%** |
+| EfficientNet-B0 | 1e-4 | **95.0%** | **100.0%** | **95.0%** | **100.0%** |
+| ConvNeXt-Tiny | 1e-3 | 33.3% | 33.3% | 33.3% | 33.3% |
+| ConvNeXt-Tiny | 1e-4 | 88.3% | 91.7% | 83.3% | 91.7% |
 
-EfficientNet-B0 is the standout for DOC in Pipeline A: both LRs achieve 100% run accuracy. ConvNeXt-Tiny collapses at lr=1e-3 (33.3% = 1-of-3 chance).
+EfficientNet-B0 at lr=1e-4 reaches 100% run accuracy with and without SMOTE. SMOTE notably improves ResNet-18 at lr=1e-3 (75% -> 91.7% run) but has little effect on other backbones.
 
 #### Pipeline D — SES 4-Channel (SMOTE has no effect on DOC)
 
@@ -427,20 +427,20 @@ SMOTE produces identical results to no-SMOTE for all DOC models (see `ses4ch_smo
 
 ### Feed Rate Coarse (3-class: Low / Med / High, 12 test runs)
 
-#### Pipeline A — Standard RGB CWT + SMOTE
+#### Pipeline A — Standard RGB CWT (±SMOTE)
 
-| Model | Backbone | LR | Window Acc | Run Acc |
-|-------|----------|----|-----------|---------|
-| `std_smote_feed_coarse_rn18_lr1e3` | ResNet-18 | 1e-3 | 65.8% | 66.7% |
-| `std_smote_feed_coarse_rn18_lr1e4` | ResNet-18 | 1e-4 | 71.7% | 75.0% |
-| `std_smote_feed_coarse_rn50_lr1e3` | ResNet-50 | 1e-3 | 72.5% | 75.0% |
-| `std_smote_feed_coarse_rn50_lr1e4` | ResNet-50 | 1e-4 | 65.8% | 66.7% |
-| `std_smote_feed_coarse_enb0_lr1e3` | EfficientNet-B0 | 1e-3 | 64.2% | 66.7% |
-| `std_smote_feed_coarse_enb0_lr1e4` | EfficientNet-B0 | 1e-4 | **75.0%** | **75.0%** |
-| `std_smote_feed_coarse_cnxt_lr1e3` | ConvNeXt-Tiny | 1e-3 | 33.3% | 33.3% |
-| `std_smote_feed_coarse_cnxt_lr1e4` | ConvNeXt-Tiny | 1e-4 | 71.7% | 75.0% |
+| Backbone | LR | No-SMOTE Win | No-SMOTE Run | SMOTE Win | SMOTE Run |
+|----------|----|-------------|-------------|-----------|-----------|
+| ResNet-18 | 1e-3 | 75.0% | 75.0% | 65.8% | 66.7% |
+| ResNet-18 | 1e-4 | 75.0% | 75.0% | 71.7% | 75.0% |
+| ResNet-50 | 1e-3 | 77.5% | **83.3%** | 72.5% | 75.0% |
+| ResNet-50 | 1e-4 | 70.8% | 75.0% | 65.8% | 66.7% |
+| EfficientNet-B0 | 1e-3 | 74.2% | 75.0% | 64.2% | 66.7% |
+| EfficientNet-B0 | 1e-4 | 75.0% | 75.0% | **75.0%** | 75.0% |
+| ConvNeXt-Tiny | 1e-3 | **75.8%** | 75.0% | 33.3% | 33.3% |
+| ConvNeXt-Tiny | 1e-4 | **81.7%** | **83.3%** | 71.7% | 75.0% |
 
-Feed rate coarse is the hardest 3-class target; no model exceeds 75% run accuracy. All lr=1e-3 models except ResNet-50 are at or below 66.7%; lr=1e-4 generally improves results.
+SMOTE hurts feed coarse in Pipeline A across the board: no-SMOTE beats or ties SMOTE for every backbone/LR combination. ConvNeXt-Tiny at lr=1e-4 reaches the best no-SMOTE result (81.7% window / 83.3% run); SMOTE collapses it at lr=1e-3.
 
 #### Pipeline D — SES 4-Channel (SMOTE effect varies)
 
@@ -461,20 +461,20 @@ Unlike speed and DOC, SMOTE has mixed effects: it harms ResNet-18 and ResNet-50 
 
 ### Surface Roughness Ra (3-class: Smooth / Medium / Rough, 12 test runs)
 
-#### Pipeline A — Standard RGB CWT + SMOTE
+#### Pipeline A — Standard RGB CWT (±SMOTE)
 
-| Model | Backbone | LR | Window Acc | Run Acc |
-|-------|----------|----|-----------|---------|
-| `std_smote_roughness_rn18_lr1e3` | ResNet-18 | 1e-3 | 62.5% | 66.7% |
-| `std_smote_roughness_rn18_lr1e4` | ResNet-18 | 1e-4 | 68.3% | 66.7% |
-| `std_smote_roughness_rn50_lr1e3` | ResNet-50 | 1e-3 | 69.2% | 66.7% |
-| `std_smote_roughness_rn50_lr1e4` | ResNet-50 | 1e-4 | 67.5% | **75.0%** |
-| `std_smote_roughness_enb0_lr1e3` | EfficientNet-B0 | 1e-3 | 71.7% | 66.7% |
-| `std_smote_roughness_enb0_lr1e4` | EfficientNet-B0 | 1e-4 | **73.3%** | **75.0%** |
-| `std_smote_roughness_cnxt_lr1e3` | ConvNeXt-Tiny | 1e-3 | 33.3% | 33.3% |
-| `std_smote_roughness_cnxt_lr1e4` | ConvNeXt-Tiny | 1e-4 | 72.5% | **75.0%** |
+| Backbone | LR | No-SMOTE Win | No-SMOTE Run | SMOTE Win | SMOTE Run |
+|----------|----|-------------|-------------|-----------|-----------|
+| ResNet-18 | 1e-3 | **91.7%** | **91.7%** | 62.5% | 66.7% |
+| ResNet-18 | 1e-4 | 87.5% | 83.3% | 68.3% | 66.7% |
+| ResNet-50 | 1e-3 | 83.3% | 83.3% | 69.2% | 66.7% |
+| ResNet-50 | 1e-4 | 86.7% | **91.7%** | 67.5% | **75.0%** |
+| EfficientNet-B0 | 1e-3 | **91.7%** | **91.7%** | 71.7% | 66.7% |
+| EfficientNet-B0 | 1e-4 | 88.3% | **91.7%** | **73.3%** | **75.0%** |
+| ConvNeXt-Tiny | 1e-3 | 33.3% | 33.3% | 33.3% | 33.3% |
+| ConvNeXt-Tiny | 1e-4 | 88.3% | **91.7%** | 72.5% | **75.0%** |
 
-Roughness is a difficult target due to overlapping Ra distributions. Best run accuracy is 75% (3/4 models at lr=1e-4). All lr=1e-3 models plateau at 66.7% except ConvNeXt-Tiny which collapses.
+SMOTE dramatically harms roughness classification in Pipeline A — no-SMOTE models achieve 83-91% run accuracy vs 66-75% with SMOTE. ResNet-18 and EfficientNet-B0 at lr=1e-3 reach 91.7% without SMOTE. ConvNeXt-Tiny collapses at lr=1e-3 in both cases.
 
 #### Pipeline D — SES 4-Channel (SMOTE has mixed effects)
 
