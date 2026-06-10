@@ -17,6 +17,7 @@ Usage:
 """
 
 import json
+import pickle
 from pathlib import Path
 
 import matplotlib
@@ -69,6 +70,10 @@ BB_COLOR  = {"rn18": "#4C72B0", "rn50": "#DD8452",
 
 def _fmt_pct(x, _):
     return f"{x:.0%}"
+
+
+def _fmt_signed_pct(x, _):
+    return f"{x:+.0%}"
 
 
 def _feed_name(pipeline):
@@ -132,8 +137,9 @@ def make_acc_figure(pipeline, target):
     fig.legend(handles=handles, loc="lower center", ncol=3, fontsize=8,
                bbox_to_anchor=(0.5, -0.01))
     plt.tight_layout(rect=[0, 0.04, 1, 1])
-    out = OUT_DIR / f"{pipeline}_{target}_acc.png"
-    fig.savefig(out, dpi=150, bbox_inches="tight")
+    out = OUT_DIR / f"{pipeline}_{target}_acc.pickle"
+    with open(out, "wb") as _f:
+        pickle.dump(fig, _f)
     plt.close()
     print(f"  saved {out}")
 
@@ -177,8 +183,9 @@ def make_loss_figure(pipeline, target):
     fig.legend(handles=handles, loc="lower center", ncol=3, fontsize=8,
                bbox_to_anchor=(0.5, -0.01))
     plt.tight_layout(rect=[0, 0.04, 1, 1])
-    out = OUT_DIR / f"{pipeline}_{target}_loss.png"
-    fig.savefig(out, dpi=150, bbox_inches="tight")
+    out = OUT_DIR / f"{pipeline}_{target}_loss.pickle"
+    with open(out, "wb") as _f:
+        pickle.dump(fig, _f)
     plt.close()
     print(f"  saved {out}")
 
@@ -231,8 +238,9 @@ def make_comparison(target):
     fig.legend(handles=pl_handles + lr_handles, loc="lower center", ncol=3,
                fontsize=8, bbox_to_anchor=(0.5, -0.02))
     plt.tight_layout(rect=[0, 0.06, 1, 1])
-    out = OUT_DIR / f"compare_AD_{target}.png"
-    fig.savefig(out, dpi=150, bbox_inches="tight")
+    out = OUT_DIR / f"compare_AD_{target}.pickle"
+    with open(out, "wb") as _f:
+        pickle.dump(fig, _f)
     plt.close()
     print(f"  saved {out}")
 
@@ -286,8 +294,9 @@ def make_summary():
     fig.legend(handles=bb_handles, loc="lower center", ncol=4, fontsize=9,
                bbox_to_anchor=(0.5, -0.005), title="Backbone")
     plt.tight_layout(rect=[0, 0.025, 1, 1])
-    out = OUT_DIR / "summary_best_acc.png"
-    fig.savefig(out, dpi=150, bbox_inches="tight")
+    out = OUT_DIR / "summary_best_acc.pickle"
+    with open(out, "wb") as _f:
+        pickle.dump(fig, _f)
     plt.close()
     print(f"  saved {out}")
 
@@ -332,8 +341,9 @@ def make_overfit():
             ax.legend(handles=pl_h, fontsize=7, loc="lower right")
 
     plt.tight_layout()
-    out = OUT_DIR / "overfit_gap.png"
-    fig.savefig(out, dpi=150, bbox_inches="tight")
+    out = OUT_DIR / "overfit_gap.pickle"
+    with open(out, "wb") as _f:
+        pickle.dump(fig, _f)
     plt.close()
     print(f"  saved {out}")
 
@@ -358,7 +368,7 @@ def make_smote_delta():
             ax.set_title(f"Pipeline {letter}  ·  {TGT_LABEL[target]}", fontsize=9)
             ax.axhline(0, color="black", lw=0.8)
             ax.set_ylim(-0.35, 0.35)
-            ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:+.0%}"))
+            ax.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt_signed_pct))
             ax.grid(True, axis="y", alpha=0.25)
             ax.set_xticks(x)
             ax.set_xticklabels([BB_LABEL[b] for b in BACKBONES],
@@ -396,8 +406,9 @@ def make_smote_delta():
     fig.legend(handles=bb_handles, loc="lower center", ncol=4, fontsize=9,
                bbox_to_anchor=(0.5, -0.005), title="Backbone")
     plt.tight_layout(rect=[0, 0.025, 1, 1])
-    out = OUT_DIR / "smote_delta.png"
-    fig.savefig(out, dpi=150, bbox_inches="tight")
+    out = OUT_DIR / "smote_delta.pickle"
+    with open(out, "wb") as _f:
+        pickle.dump(fig, _f)
     plt.close()
     print(f"  saved {out}")
 
@@ -407,7 +418,7 @@ def make_smote_delta():
 def main():
     OUT_DIR.mkdir(exist_ok=True)
 
-    old = list(OUT_DIR.glob("*.png"))
+    old = list(OUT_DIR.glob("*.pickle"))
     for f in old:
         f.unlink()
     print(f"Removed {len(old)} old PNG(s)\n")
@@ -432,7 +443,7 @@ def main():
     print("\nSMOTE effect delta charts:")
     make_smote_delta()
 
-    total = sum(1 for _ in OUT_DIR.glob("*.png"))
+    total = sum(1 for _ in OUT_DIR.glob("*.pickle"))
     print(f"\nDone — {total} PNG files in {OUT_DIR}/")
 
 
