@@ -16,10 +16,10 @@ Algorithm
 4. Column-wise z-score normalise (fit on all 72 windows).
    Clip to +-3 sigma, rescale to [0, 255], save as grayscale PNG.
 5. Output:
-     scalograms_opt_c/run{NN}_{window}.png   72 images (32 x 12 px)
-     scalograms_opt_c/labels.csv
-     scalograms_opt_c/selected_scales.json
-     scalograms_opt_c/scale_selection_summary.png
+     scalograms_32x12/{side}{feed}{window}.png   72 images (32 x 12 px), e.g. "1a1.png"
+     scalograms_32x12/labels.csv
+     scalograms_32x12/selected_scales.json
+     scalograms_32x12/scale_selection_summary.png
 """
 
 import json
@@ -31,7 +31,7 @@ from PIL import Image
 from scipy.stats import spearmanr
 
 DATA_DIR = Path(__file__).parent / "data"
-OUT_DIR  = Path(__file__).parent / "scalograms_opt_c"
+OUT_DIR  = Path(__file__).parent / "scalograms_32x12"
 OUT_DIR.mkdir(exist_ok=True)
 
 FEATURE_COLS = [
@@ -52,6 +52,15 @@ SIDE_TO_RUNS = {
     7: (10, 11, 12),
     8: (22, 23, 24),
 }
+
+# Sample ID convention (shared with the train/test split README):
+# [side 1-8][feed letter a=f3/b=f5/c=f7][time-window number 1/2/3]
+FEED_TO_LETTER = {"f3": "a", "f5": "b", "f7": "c"}
+WINDOW_TO_NUM  = {"a": "1", "b": "2", "c": "3"}
+
+
+def sample_id(side: int, feed: str, window: str) -> str:
+    return f"{side}{FEED_TO_LETTER[feed]}{WINDOW_TO_NUM[window]}"
 
 
 def ra_class(ra: float) -> str:
@@ -195,16 +204,18 @@ def main():
     # Save PNGs + labels
     rows = []
     for i, rec in enumerate(records):
-        fname = f"run{rec['run']:02d}_{rec['window']}.png"
+        sid   = sample_id(rec["side"], rec["feed"], rec["window"])
+        fname = f"{sid}.png"
         Image.fromarray(imgs_u8[i]).save(OUT_DIR / fname)
         rows.append({
-            "filename": fname,
-            "run":      rec["run"],
-            "window":   rec["window"],
-            "side":     rec["side"],
-            "feed":     rec["feed"],
-            "ra":       rec["ra"],
-            "ra_class": ra_class(rec["ra"]),
+            "filename":  fname,
+            "sample_id": sid,
+            "run":       rec["run"],
+            "window":    rec["window"],
+            "side":      rec["side"],
+            "feed":      rec["feed"],
+            "ra":        rec["ra"],
+            "ra_class":  ra_class(rec["ra"]),
         })
 
     labels_df = pd.DataFrame(rows)

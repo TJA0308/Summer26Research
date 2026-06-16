@@ -37,7 +37,7 @@ from torchvision import models, transforms
 
 # ── constants ──────────────────────────────────────────────────────────────────
 SEED        = 42
-IMG_DIR     = Path(__file__).parent / "scalograms_opt_c"
+IMG_DIR     = Path(__file__).parent / "scalograms_32x12"
 LABELS_CSV  = IMG_DIR / "labels.csv"
 OUT_DIR     = Path(__file__).parent / "models_optc"
 IMG_H, IMG_W = 32, 12

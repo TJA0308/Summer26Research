@@ -1,6 +1,6 @@
 # Shoulder Milling — Option C Scalograms (32 x 12)
 
-This document explains how the 72 training scalograms in `scalograms_opt_c/` were
+This document explains how the 72 training scalograms in `scalograms_32x12/` were
 built, why each design decision was made, and what the images represent.  It is the
 direct follow-on to the correlation and PCA analysis documented in `pca_readme.md`.
 Read that document first for the dataset description and feature definitions.
@@ -197,7 +197,7 @@ Their Ra correlation drops sharply from row 35 (score 0.274) to near-zero at row
 formed by the cutting tool edge at fine spatial scales; coarse vibration modes are not
 directly related to surface texture.
 
-**Visualisation:** `scalograms_opt_c/scale_selection_summary.png` shows the full
+**Visualisation:** `scalograms_32x12/scale_selection_summary.png` shows the full
 score bar chart for all 64 scales (red = selected, blue = dropped) and example 32 x 12
 images for Low, Med, and High Ra runs.
 
@@ -277,7 +277,7 @@ dynamic range.
 
 ## 7. Output Files
 
-All outputs are in `scalograms_opt_c/`.
+All outputs are in `scalograms_32x12/`.
 
 ### Image Files
 
@@ -419,11 +419,11 @@ criterion = nn.CrossEntropyLoss(weight=weights)
 |---|---|
 | `pca_readme.md` | Full dataset description, feature definitions, PCA and correlation analysis |
 | `build_option_c_scalograms.py` | Script that performs scale selection and generates all 72 scalograms |
-| `scalograms_opt_c/` | Directory containing all output files (below) |
-| `scalograms_opt_c/run{NN}_{win}.png` | 72 grayscale scalogram images (32 x 12 px) |
-| `scalograms_opt_c/labels.csv` | Run, window, side, feed, Ra, Ra class for all 72 images |
-| `scalograms_opt_c/selected_scales.json` | 32 selected CWT scale indices + all 64 Spearman scores |
-| `scalograms_opt_c/scale_selection_summary.png` | Diagnostic visualisation of scale selection and example images |
+| `scalograms_32x12/` | Directory containing all output files (below) |
+| `scalograms_32x12/run{NN}_{win}.png` | 72 grayscale scalogram images (32 x 12 px) |
+| `scalograms_32x12/labels.csv` | Run, window, side, feed, Ra, Ra class for all 72 images |
+| `scalograms_32x12/selected_scales.json` | 32 selected CWT scale indices + all 64 Spearman scores |
+| `scalograms_32x12/scale_selection_summary.png` | Diagnostic visualisation of scale selection and example images |
 | `pca_plots/` | All 19 diagnostic plots from PCA, correlation, and Options A/B/C explanations |
 | `pca_analysis.py` | Phase 1: PCA pipeline |
 | `correlation_analysis.py` | Phase 2: Spearman, MI, PLS, t-SNE |

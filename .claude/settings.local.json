@@ -26,7 +26,16 @@
       "Bash(git push *)",
       "Bash(python plot_option_a.py)",
       "Bash(python build_option_c_scalograms.py)",
-      "Bash(python plot_training_curves_ad.py)"
+      "Bash(python plot_training_curves_ad.py)",
+      "Bash(python -c \"import PIL, scipy, pandas, numpy, matplotlib; print\\('deps ok'\\)\")",
+      "Bash(python build_option_d_scalograms.py)",
+      "Bash(python -c \"from PIL import Image; im = Image.open\\('scalograms_opt_d/run01.png'\\); print\\('size:', im.size, 'mode:', im.mode\\)\")",
+      "Bash(python -c \"from PIL import Image; im = Image.open\\('scalograms_opt_d/run01_a.png'\\); print\\('size:', im.size, 'mode:', im.mode\\)\")",
+      "Bash(python -c \"import torch, torchvision, imblearn, sklearn; print\\('torch', torch.__version__, '| cuda:', torch.cuda.is_available\\(\\)\\); print\\('torchvision', torchvision.__version__\\); print\\('imblearn ok, sklearn ok'\\)\")",
+      "Bash(python cnn_train_param.py --target speed --img_dir scalograms_32x3 --arch resnet18 --lr 1e-3 --epochs 2 --no_smote)",
+      "Bash(python cnn_train_param.py --target feed --img_dir scalograms_32x12 --arch efficientnet_b0 --lr 1e-4 --epochs 2)",
+      "Bash(python cnn_train_param.py --target doc --img_dir scalograms_32x3 --arch convnext_tiny --lr 1e-3 --epochs 1)",
+      "Bash(python cnn_train_param.py --target speed --img_dir scalograms_32x12 --arch resnet50 --lr 1e-4 --epochs 1 --no_smote)"
     ]
   }
 }
