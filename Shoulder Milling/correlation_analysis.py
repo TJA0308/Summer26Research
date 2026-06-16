@@ -114,7 +114,7 @@ def plot_spearman(X_run, ra_run):
     """
     Compute Spearman rho between each of the 768 feature positions and Ra.
     Reshape to (64, 12) heatmap so we can see which feature types and which
-    row indices carry the strongest monotonic relationship with Ra.
+        row indices carry the strongest monotonic relationship with Ra.
 
     Using run-level averages (24 data points) to avoid inflating significance
     with the 3 windows per run that share the same label.
