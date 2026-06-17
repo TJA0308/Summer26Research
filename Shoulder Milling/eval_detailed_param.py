@@ -19,6 +19,7 @@ Usage (from this directory):
         --model models_feed_32x12/resnet50_lr0.001_best.pt --save_md results/feed_resnet50.md
 """
 import argparse
+import json
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -134,14 +135,28 @@ def to_markdown(results, class_names, model_name, target, scalo_tag, arch, n_win
     return "\n".join(lines)
 
 
-def eval_one(model_path, target, img_dir, arch, device=None, save_md=None, verbose=True):
-    """Evaluate one trained checkpoint. Returns (results, markdown_string)."""
-    device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def eval_one(model_path, target, img_dir, arch, device=None, save_md=None, verbose=True, dropout=None):
+    """Evaluate one trained checkpoint. Returns (results, markdown_string).
+
+    If dropout is None, it's auto-detected from the sibling <tag>_history.json
+    written by cnn_train_param.py (defaults to 0.0 if absent/not found) --
+    dropout>0 wraps the final Linear in a Sequential, which changes the
+    state_dict key names, so the eval-time model must be built the same way
+    the checkpoint was trained or load_state_dict will fail."""
+    device      = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     spec        = TARGETS[target]
     class_names = spec["class_names"]
     img_dir     = Path(img_dir)
+    model_path  = Path(model_path)
 
-    model = build_model(arch, spec["num_classes"]).to(device)
+    if dropout is None:
+        hist_path = model_path.parent / model_path.name.replace("_best.pt", "_history.json")
+        dropout   = 0.0
+        if hist_path.exists():
+            with open(hist_path) as f:
+                dropout = json.load(f).get("dropout", 0.0)
+
+    model = build_model(arch, spec["num_classes"], dropout=dropout).to(device)
     state = torch.load(model_path, map_location=device, weights_only=True)
     model.load_state_dict(state)
     model.eval()
@@ -183,11 +198,16 @@ def main():
     parser.add_argument("--model",   default=None,
                         help="Explicit path to a .pt checkpoint (overrides the --lr-derived default path)")
     parser.add_argument("--save_md", default=None,
-                        help="Path to save markdown output (default: exp_results_<tag>/<target>_<arch>_lr<lr>.md)")
+                        help="Path to save markdown output "
+                             "(default: exp_results_<tag>/<target>_<arch>_lr<lr>[_<run_tag>].md)")
+    parser.add_argument("--run_tag", default="",
+                        help="Optional suffix matching the training run's --run_tag, e.g. 'smote' -- "
+                             "used to build the default --model and --save_md paths")
     args = parser.parse_args()
 
-    img_dir   = ROOT / args.img_dir
-    scalo_tag = img_dir.name.replace("scalograms_", "")
+    img_dir    = ROOT / args.img_dir
+    scalo_tag  = img_dir.name.replace("scalograms_", "")
+    tag_suffix = f"_{args.run_tag}" if args.run_tag else ""
 
     if args.model:
         model_path = Path(args.model)
@@ -196,7 +216,7 @@ def main():
     else:
         if args.lr is None:
             parser.error("--lr is required when --model is not given")
-        model_path = ROOT / f"models_{args.target}_{scalo_tag}" / f"{args.arch}_lr{args.lr:g}_best.pt"
+        model_path = ROOT / f"models_{args.target}_{scalo_tag}" / f"{args.arch}_lr{args.lr:g}{tag_suffix}_best.pt"
 
     if not model_path.exists():
         print(f"ERROR: model file not found: {model_path}")
@@ -204,7 +224,7 @@ def main():
 
     save_md = args.save_md
     if save_md is None and args.lr is not None:
-        save_md = ROOT / f"exp_results_{scalo_tag}" / f"{args.target}_{args.arch}_lr{args.lr:g}.md"
+        save_md = ROOT / f"exp_results_{scalo_tag}" / f"{args.target}_{args.arch}_lr{args.lr:g}{tag_suffix}.md"
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")

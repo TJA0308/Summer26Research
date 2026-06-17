@@ -287,6 +287,9 @@ def main():
                         help="Label smoothing factor for CrossEntropyLoss (0=off)")
     parser.add_argument("--noise_std", type=float, default=0.02,
                         help="Std of Gaussian noise added to training images (0=off)")
+    parser.add_argument("--run_tag", default="",
+                        help="Optional suffix for output filenames, e.g. 'smote' -- "
+                             "lets a re-run live alongside a prior run's files in the same folder")
     args = parser.parse_args()
 
     seed_everything(SEED)
@@ -338,6 +341,8 @@ def main():
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     tag = f"{args.arch}_lr{args.lr:g}"
+    if args.run_tag:
+        tag += f"_{args.run_tag}"
     best_acc, best_epoch, history = 0.0, 0, []
 
     print(f"\n{'Ep':>4}  {'TrLoss':>8}  {'TrAcc':>7}  {'TeLoss':>8}  {'TeAcc':>7}  {'TeF1':>6}")
@@ -376,6 +381,7 @@ def main():
             "target": args.target, "scalogram": scalo_tag, "arch": args.arch,
             "epochs": args.epochs, "lr": args.lr, "smote": use_smote,
             "dropout": args.dropout, "label_smooth": args.label_smooth, "noise_std": args.noise_std,
+            "run_tag": args.run_tag,
             "best_window_acc": round(best_acc, 4), "best_epoch": best_epoch,
             "run_level_acc": round(run_acc, 4), "history": history,
         }, f, indent=2)
