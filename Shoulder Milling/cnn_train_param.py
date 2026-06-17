@@ -22,7 +22,12 @@ the test set isolates the target parameter as the only varying factor
 letter (e.g. "1a" = side 1, f3), matching the labels.csv "side"/"feed"
 columns -- the same convention used to name the scalogram PNGs.
 
+SMOTE: training reads pre-generated synthetic samples from
+smote_<target>_labels.csv in --img_dir if present (run
+smote_generate_param.py first to create them). --no_smote skips loading them.
+
 Usage examples:
+    python smote_generate_param.py   # one-time: generate synthetic samples for all targets/pipelines
     python cnn_train_param.py --target speed --img_dir scalograms_32x12 --arch resnet18      --lr 1e-3
     python cnn_train_param.py --target feed  --img_dir scalograms_32x3  --arch convnext_tiny --lr 1e-4 --no_smote
 """
@@ -36,7 +41,6 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from imblearn.over_sampling import SMOTE
 from PIL import Image
 from sklearn.metrics import classification_report, f1_score
 from torch.utils.data import DataLoader, Dataset
@@ -109,23 +113,29 @@ class ScalogramDataset(Dataset):
         return img, self.labels[idx]
 
 
-class SyntheticDataset(Dataset):
-    def __init__(self, tensors, labels):
-        self.tensors, self.labels = tensors, labels
+class AddGaussianNoise:
+    """Adds N(0, std) noise to a [0,1]-scaled tensor before ImageNet normalisation.
 
-    def __len__(self):
-        return len(self.tensors)
+    These "images" are z-scored engineered feature matrices (FFT bins, wavelet
+    stats, kurtosis/RMS/crest-factor), not photographs -- RandomHorizontalFlip
+    and ColorJitter scramble/distort those numeric features in physically
+    meaningless ways. Small additive noise is the closer analogue of real
+    sensor/measurement noise and is the augmentation actually used here.
+    """
+    def __init__(self, std=0.02):
+        self.std = std
 
-    def __getitem__(self, idx):
-        return self.tensors[idx], self.labels[idx]
+    def __call__(self, tensor):
+        if self.std <= 0:
+            return tensor
+        return tensor + torch.randn_like(tensor) * self.std
 
 
-def build_transforms():
+def build_transforms(noise_std=0.02):
     train_tf = transforms.Compose([
         transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BILINEAR),
-        transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(brightness=0.15, contrast=0.15),
         transforms.ToTensor(),
+        AddGaussianNoise(noise_std),
         transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
     ])
     val_tf = transforms.Compose([
@@ -137,19 +147,24 @@ def build_transforms():
 
 
 # ── model factory ──────────────────────────────────────────────────────────────
-def build_model(arch: str, num_classes: int) -> nn.Module:
+def build_model(arch: str, num_classes: int, dropout: float = 0.0) -> nn.Module:
+    def head(in_features):
+        if dropout > 0:
+            return nn.Sequential(nn.Dropout(dropout), nn.Linear(in_features, num_classes))
+        return nn.Linear(in_features, num_classes)
+
     if arch == "resnet18":
         m = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-        m.fc = nn.Linear(m.fc.in_features, num_classes)
+        m.fc = head(m.fc.in_features)
     elif arch == "resnet50":
         m = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
-        m.fc = nn.Linear(m.fc.in_features, num_classes)
+        m.fc = head(m.fc.in_features)
     elif arch == "efficientnet_b0":
         m = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
-        m.classifier[1] = nn.Linear(m.classifier[1].in_features, num_classes)
+        m.classifier[1] = head(m.classifier[1].in_features)
     elif arch == "convnext_tiny":
         m = models.convnext_tiny(weights=models.ConvNeXt_Tiny_Weights.DEFAULT)
-        m.classifier[2] = nn.Linear(m.classifier[2].in_features, num_classes)
+        m.classifier[2] = head(m.classifier[2].in_features)
     else:
         raise ValueError(f"Unknown arch: {arch}")
     return m
@@ -175,49 +190,18 @@ def load_split(img_dir: Path, target: str):
 
 
 # ── SMOTE ──────────────────────────────────────────────────────────────────────
-def apply_smote(paths: list, labels: list, img_h: int, img_w: int):
-    """Flattens each training image to a pixel vector, balances classes with
-    SMOTE, returns pre-tensorised (224x224, normalised) synthetic samples."""
-    raw_tf = transforms.Compose([
-        transforms.Resize((img_h, img_w), interpolation=transforms.InterpolationMode.BILINEAR),
-        transforms.ToTensor(),
-    ])
-
-    X = []
-    for p in paths:
-        img = Image.open(p).convert("RGB")
-        t   = raw_tf(img)
-        X.append(t.numpy().flatten())
-    X = np.array(X, dtype=np.float32)
-    y = np.array(labels, dtype=int)
-
-    counts = np.bincount(y)
-    print(f"\n  [SMOTE] Before: {dict(enumerate(counts))}")
-
-    min_count = counts[counts > 0].min()
-    if min_count < 2:
-        print("  [SMOTE] Skipped -- a class has fewer than 2 samples")
+def load_smote_samples(img_dir: Path, target: str):
+    """Loads pre-generated synthetic samples written by smote_generate_param.py
+    (smote_<target>_labels.csv in img_dir). Returns ([], []) if not generated."""
+    csv_path = img_dir / f"smote_{target}_labels.csv"
+    if not csv_path.exists():
         return [], []
-
-    smote = SMOTE(random_state=SEED, k_neighbors=min(5, min_count - 1))
-    X_res, y_res = smote.fit_resample(X, y)
-
-    counts_after = np.bincount(y_res)
-    n_synthetic  = len(X_res) - len(X)
-    print(f"  [SMOTE] After:  {dict(enumerate(counts_after))}  (+{n_synthetic} synthetic)")
-
-    norm = transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)
-    synthetic_tensors, synthetic_labels = [], []
-    for i in range(len(X), len(X_res)):
-        arr = np.clip(X_res[i].reshape(3, img_h, img_w), 0, 1)
-        t   = torch.from_numpy(arr)
-        t   = transforms.functional.resize(
-            t, [224, 224], interpolation=transforms.InterpolationMode.BILINEAR, antialias=True
-        )
-        t   = norm(t)
-        synthetic_tensors.append(t)
-        synthetic_labels.append(int(y_res[i]))
-    return synthetic_tensors, synthetic_labels
+    df = pd.read_csv(csv_path)
+    if df.empty:
+        return [], []
+    paths  = [img_dir / fn for fn in df["filename"]]
+    labels = df["label"].astype(int).tolist()
+    return paths, labels
 
 
 # ── training / evaluation ──────────────────────────────────────────────────────
@@ -296,7 +280,13 @@ def main():
     parser.add_argument("--batch",  type=int, default=8)
     parser.add_argument("--lr",     type=float, default=1e-3)
     parser.add_argument("--no_smote", action="store_true",
-                        help="Disable SMOTE oversampling")
+                        help="Skip loading pre-generated SMOTE synthetic samples")
+    parser.add_argument("--dropout", type=float, default=0.3,
+                        help="Dropout before the final classifier layer (0=off)")
+    parser.add_argument("--label_smooth", type=float, default=0.05,
+                        help="Label smoothing factor for CrossEntropyLoss (0=off)")
+    parser.add_argument("--noise_std", type=float, default=0.02,
+                        help="Std of Gaussian noise added to training images (0=off)")
     args = parser.parse_args()
 
     seed_everything(SEED)
@@ -316,29 +306,24 @@ def main():
     (tr_paths, tr_labels, tr_runs), (te_paths, te_labels, te_runs) = load_split(img_dir, args.target)
     print(f"Train windows : {len(tr_paths)}  |  Test windows : {len(te_paths)}")
 
-    with Image.open(tr_paths[0]) as im0:
-        img_w, img_h = im0.size   # PIL reports (width, height)
-
-    train_tf, val_tf = build_transforms()
+    train_tf, val_tf = build_transforms(args.noise_std)
 
     use_smote = not args.no_smote
     if use_smote:
-        syn_tensors, syn_labels = apply_smote(tr_paths, tr_labels, img_h, img_w)
-    else:
-        syn_tensors, syn_labels = [], []
+        syn_paths, syn_labels = load_smote_samples(img_dir, args.target)
+        if syn_paths:
+            print(f"  SMOTE: {len(syn_paths)} synthetic windows loaded from "
+                  f"smote_{args.target}_labels.csv")
+            tr_paths  = tr_paths + syn_paths
+            tr_labels = tr_labels + syn_labels
+        else:
+            print(f"  SMOTE: no smote_{args.target}_labels.csv found in {img_dir.name} "
+                  f"(run smote_generate_param.py first) -- training on real data only")
 
-    real_ds = ScalogramDataset(tr_paths, tr_labels, train_tf)
-    test_ds = ScalogramDataset(te_paths, te_labels, val_tf)
+    train_ds = ScalogramDataset(tr_paths, tr_labels, train_tf)
+    test_ds  = ScalogramDataset(te_paths, te_labels, val_tf)
 
-    if use_smote and syn_tensors:
-        syn_ds     = SyntheticDataset(syn_tensors, syn_labels)
-        train_ds   = torch.utils.data.ConcatDataset([real_ds, syn_ds])
-        all_labels = tr_labels + syn_labels
-    else:
-        train_ds   = real_ds
-        all_labels = tr_labels
-
-    counts = np.bincount(all_labels, minlength=spec["num_classes"]).astype(float)
+    counts = np.bincount(tr_labels, minlength=spec["num_classes"]).astype(float)
     counts[counts == 0] = 1.0
     weights = torch.tensor(1.0 / counts, dtype=torch.float32).to(device)
     weights = weights / weights.sum()
@@ -347,8 +332,8 @@ def main():
     train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=0)
     test_dl  = DataLoader(test_ds,  batch_size=args.batch, shuffle=False, num_workers=0)
 
-    model     = build_model(args.arch, num_classes=spec["num_classes"]).to(device)
-    criterion = nn.CrossEntropyLoss(weight=weights)
+    model     = build_model(args.arch, num_classes=spec["num_classes"], dropout=args.dropout).to(device)
+    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=args.label_smooth)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
@@ -390,6 +375,7 @@ def main():
         json.dump({
             "target": args.target, "scalogram": scalo_tag, "arch": args.arch,
             "epochs": args.epochs, "lr": args.lr, "smote": use_smote,
+            "dropout": args.dropout, "label_smooth": args.label_smooth, "noise_std": args.noise_std,
             "best_window_acc": round(best_acc, 4), "best_epoch": best_epoch,
             "run_level_acc": round(run_acc, 4), "history": history,
         }, f, indent=2)
