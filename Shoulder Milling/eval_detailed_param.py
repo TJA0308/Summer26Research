@@ -32,7 +32,10 @@ import torch
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent))
-from cnn_train_param import TARGETS, FEED_TO_LETTER, build_model, build_transforms, label_for
+from cnn_train_param import (
+    TARGETS, FEED_TO_LETTER, COND_PARENTS, COND_DIMS,
+    build_model, build_transforms, label_for, load_conditioning, ConditionedModel,
+)
 
 ROOT = Path(__file__).parent
 
@@ -63,18 +66,24 @@ def load_test_windows(img_dir, target):
 
 
 @torch.no_grad()
-def predict(model, path, val_tf, device):
+def predict(model, path, val_tf, device, cond_values=None):
     img = Image.open(path).convert("RGB")
     t = val_tf(img).unsqueeze(0).to(device)
+    if cond_values is not None:
+        conds = [torch.tensor([v], device=device) for v in cond_values]
+        return model(t, *conds).argmax(1).item()
     return model(t).argmax(1).item()
 
 
-def run_evaluation(model, run_windows, run_label, val_tf, device):
-    """Returns a list of result dicts, one per test run, sorted by run id."""
+def run_evaluation(model, run_windows, run_label, val_tf, device, cond_map=None):
+    """Returns a list of result dicts, one per test run, sorted by run id.
+    cond_map, if given, maps path -> list of conditioning label values for
+    evaluating a ConditionedModel (see cnn_train_param.py)."""
     results = []
     for run_id in sorted(run_windows.keys()):
         true_lbl     = run_label[run_id]
-        window_preds = [predict(model, path, val_tf, device) for path, _ in run_windows[run_id]]
+        window_preds = [predict(model, path, val_tf, device, cond_map[path] if cond_map else None)
+                         for path, _ in run_windows[run_id]]
         majority     = Counter(window_preds).most_common(1)[0][0]
         results.append({
             "run":          run_id,
@@ -137,38 +146,65 @@ def to_markdown(results, class_names, model_name, target, scalo_tag, arch, n_win
     return "\n".join(lines)
 
 
-def eval_one(model_path, target, img_dir, arch, device=None, save_md=None, verbose=True, dropout=None):
+def eval_one(model_path, target, img_dir, arch, device=None, save_md=None, verbose=True,
+             dropout=None, run_tag=""):
     """Evaluate one trained checkpoint. Returns (results, markdown_string).
 
     If dropout is None, it's auto-detected from the sibling <tag>_history.json
     written by cnn_train_param.py (defaults to 0.0 if absent/not found) --
     dropout>0 wraps the final Linear in a Sequential, which changes the
     state_dict key names, so the eval-time model must be built the same way
-    the checkpoint was trained or load_state_dict will fail."""
+    the checkpoint was trained or load_state_dict will fail.
+
+    If that history.json says the model was trained conditioned on one or
+    more parent targets (cascade conditioning, see cnn_train_param.py),
+    this loads the same <parent>_pred_<scalo>[_<run_tag>].csv files used at
+    training time and builds a ConditionedModel to match."""
     device      = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     spec        = TARGETS[target]
     class_names = spec["class_names"]
     img_dir     = Path(img_dir)
     model_path  = Path(model_path)
 
+    hist = {}
+    hist_path = model_path.parent / model_path.name.replace("_best.pt", "_history.json")
+    if hist_path.exists():
+        with open(hist_path) as f:
+            hist = json.load(f)
     if dropout is None:
-        hist_path = model_path.parent / model_path.name.replace("_best.pt", "_history.json")
-        dropout   = 0.0
-        if hist_path.exists():
-            with open(hist_path) as f:
-                dropout = json.load(f).get("dropout", 0.0)
-
-    model = build_model(arch, spec["num_classes"], dropout=dropout).to(device)
-    state = torch.load(model_path, map_location=device, weights_only=True)
-    model.load_state_dict(state)
-    model.eval()
+        dropout = hist.get("dropout", 0.0)
+    cond_parents = hist.get("cond_parents", [])
 
     _, val_tf = build_transforms()
     run_windows, run_label = load_test_windows(img_dir, target)
     if not run_windows:
         raise RuntimeError(f"No test windows found for target={target} in {img_dir}")
 
-    results = run_evaluation(model, run_windows, run_label, val_tf, device)
+    cond_map = None
+    if cond_parents:
+        all_paths = [p for ws in run_windows.values() for p, _ in ws]
+        cond_dims, per_parent_values = [], []
+        for parent in cond_parents:
+            vals = load_conditioning(img_dir, parent, all_paths, run_tag)
+            if vals is None:
+                raise RuntimeError(
+                    f"Model was trained conditioned on '{parent}' but "
+                    f"{parent}_pred_{img_dir.name.replace('scalograms_', '')}"
+                    f"{'_' + run_tag if run_tag else ''}.csv is missing -- "
+                    f"run predict_conditioning.py for '{parent}' first."
+                )
+            cond_dims.append(COND_DIMS[parent])
+            per_parent_values.append(vals)
+        cond_map = {p: [pv[i] for pv in per_parent_values] for i, p in enumerate(all_paths)}
+        model = ConditionedModel(arch, spec["num_classes"], cond_dims, dropout=dropout).to(device)
+    else:
+        model = build_model(arch, spec["num_classes"], dropout=dropout).to(device)
+
+    state = torch.load(model_path, map_location=device, weights_only=True)
+    model.load_state_dict(state)
+    model.eval()
+
+    results = run_evaluation(model, run_windows, run_label, val_tf, device, cond_map)
 
     if verbose:
         print(f"\nModel : {Path(model_path).name}")
@@ -230,7 +266,8 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
-    eval_one(model_path, args.target, img_dir, args.arch, device=device, save_md=save_md)
+    eval_one(model_path, args.target, img_dir, args.arch, device=device, save_md=save_md,
+             run_tag=args.run_tag)
 
 
 if __name__ == "__main__":
