@@ -36,8 +36,10 @@ from cnn_train_param import TARGETS, FEED_TO_LETTER, build_model, build_transfor
 
 ROOT = Path(__file__).parent
 
-# labels.csv "window" column uses a/b/c for the 3 time windows of each run
-WINDOW_ORDER = {"a": 1, "b": 2, "c": 3}
+# labels.csv "window" column uses w1/w2/w3 for the 3 time windows of each run
+# (deliberately not a/b/c -- that letter is already used for the feed-rate
+# convention in run_id, e.g. "1c" = side 1, feed f7).
+WINDOW_ORDER = {"w1": 1, "w2": 2, "w3": 3}
 
 
 def load_test_windows(img_dir, target):

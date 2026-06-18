@@ -211,7 +211,7 @@ def main():
             "filename":  fname,
             "sample_id": sid,
             "run":       rec["run"],
-            "window":    rec["window"],
+            "window":    f"w{WINDOW_TO_NUM[rec['window']]}",
             "side":      rec["side"],
             "feed":      rec["feed"],
             "ra":        rec["ra"],
