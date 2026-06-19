@@ -8,8 +8,8 @@
 | 3c | f7 | f3 | f5 | f5 | f5 | ✗ |
 | 6a | f3 | f3 | f3 | f3 | f3 | ✓ |
 | 8a | f3 | f3 | f3 | f3 | f3 | ✓ |
-| 8b | f5 | f5 | f5 | f5 | f5 | ✓ |
-| 8c | f7 | f7 | f7 | f3 | f7 | ✓ |
+| 8b | f5 | f3 | f3 | f3 | f3 | ✗ |
+| 8c | f7 | f3 | f3 | f3 | f3 | ✗ |
 
-Window accuracy: **70.8%** (17/24)
-Run MV accuracy: **75.0%** (6/8)
+Window accuracy: **50.0%** (12/24)
+Run MV accuracy: **50.0%** (4/8)

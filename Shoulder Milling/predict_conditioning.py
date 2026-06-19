@@ -40,7 +40,8 @@ ROOT  = Path(__file__).parent
 def find_best_model(target, scalo_tag, run_tag):
     """Returns (model_path, history_dict, arch) for the highest run_level_acc
     model among the already-trained arch x lr combos for this target+pipeline."""
-    model_dir = ROOT / f"models_{target}_{scalo_tag}"
+    subdir = f"models_{target}_{scalo_tag}"
+    model_dir = ROOT / "models" / subdir if (ROOT / "models" / subdir).exists() else ROOT / subdir
     suffix = f"_{run_tag}" if run_tag else ""
     best = None
     for arch in ARCHS:

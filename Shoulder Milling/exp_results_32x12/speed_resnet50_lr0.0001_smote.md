@@ -8,8 +8,8 @@
 | 4b | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | ✓ |
 | 5c | 2500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | ✗ |
 | 6c | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | ✓ |
-| 7a | 2500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | ✗ |
+| 7a | 2500rpm | 3500rpm | 3500rpm | 2500rpm | 3500rpm | ✗ |
 | 8a | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | ✓ |
 
-Window accuracy: **50.0%** (12/24)
+Window accuracy: **54.2%** (13/24)
 Run MV accuracy: **50.0%** (4/8)

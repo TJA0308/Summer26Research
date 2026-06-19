@@ -201,6 +201,39 @@ def eval_one(model_path, target, img_dir, arch, device=None, save_md=None, verbo
         model = build_model(arch, spec["num_classes"], dropout=dropout).to(device)
 
     state = torch.load(model_path, map_location=device, weights_only=True)
+
+    # The checkpoint structure may differ from the history when the .pt is from a
+    # prior run (e.g. conditioning or dropout added in a later code change).
+    # Detect the actual structure from state dict keys and rebuild if needed.
+    state_is_conditioned = any(k.startswith("base.") for k in state)
+    # Dropout wraps the final linear in a Sequential, adding an extra numeric index.
+    # Covers resnet (fc.1), efficientnet (classifier.1.1), convnext (classifier.2.1),
+    # and ConditionedModel head (head.1).
+    import re as _re
+    state_has_dropout = any(
+        _re.search(r'(fc|head|classifier\.\d+)\.\d+\.(weight|bias)$', k)
+        for k in state
+    )
+    model_has_dropout = dropout > 0
+
+    if state_is_conditioned != bool(cond_parents):
+        # Checkpoint conditioning doesn't match history — fall back to whatever
+        # the checkpoint actually is.
+        if state_is_conditioned:
+            model = ConditionedModel(arch, spec["num_classes"], cond_dims,
+                                     dropout=0.5 if state_has_dropout else 0.0).to(device)
+        else:
+            cond_map = None
+            model = build_model(arch, spec["num_classes"],
+                                dropout=0.5 if state_has_dropout else 0.0).to(device)
+    elif state_has_dropout != model_has_dropout:
+        corrected = 0.5 if state_has_dropout else 0.0
+        if cond_parents:
+            model = ConditionedModel(arch, spec["num_classes"], cond_dims,
+                                     dropout=corrected).to(device)
+        else:
+            model = build_model(arch, spec["num_classes"], dropout=corrected).to(device)
+
     model.load_state_dict(state)
     model.eval()
 
