@@ -38,7 +38,7 @@ def load_train_samples(img_dir: Path, target: str):
     """Returns (vectors [n, H*W] float32, labels [n] int, sample_ids [n] str, img_h, img_w)."""
     df = pd.read_csv(img_dir / "labels.csv")
     df["run_id"] = df["side"].astype(str) + df["feed"].map(FEED_TO_LETTER)
-    df["label"]  = df.apply(lambda r: label_for(target, r["side"], r["feed"]), axis=1)
+    df["label"]  = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
 
     train_runs = TARGETS[target]["train_runs"]
     train_df   = df[df["run_id"].isin(train_runs)].reset_index(drop=True)

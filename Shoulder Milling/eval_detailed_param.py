@@ -50,7 +50,7 @@ def load_test_windows(img_dir, target):
     held-out test runs of `target` (run_id = side + feed letter, e.g. '1a')."""
     df = pd.read_csv(img_dir / "labels.csv")
     df["run_id"] = df["side"].astype(str) + df["feed"].map(FEED_TO_LETTER)
-    df["label"]  = df.apply(lambda r: label_for(target, r["side"], r["feed"]), axis=1)
+    df["label"]  = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
 
     spec    = TARGETS[target]
     test_df = df[df["run_id"].isin(spec["test_runs"])]

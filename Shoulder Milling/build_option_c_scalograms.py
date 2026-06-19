@@ -22,6 +22,7 @@ Algorithm
      scalograms_32x12/scale_selection_summary.png
 """
 
+import argparse
 import json
 import numpy as np
 import pandas as pd
@@ -31,8 +32,6 @@ from PIL import Image
 from scipy.stats import spearmanr
 
 DATA_DIR = Path(__file__).parent / "data"
-OUT_DIR  = Path(__file__).parent / "scalograms_32x12"
-OUT_DIR.mkdir(exist_ok=True)
 
 FEATURE_COLS = [
     "32FFT", "5statistics", "64mexican", "64coif",
@@ -41,6 +40,7 @@ FEATURE_COLS = [
 N_FULL  = 64   # original image height
 N_OUT   = 32   # output image height
 CWT_COLS = [2, 3]  # 64mexican, 64coif — data-driven row selection
+FEED_NUM = {"f3": 3, "f5": 5, "f7": 7}  # ordinal feed value, used when --target feed
 
 SIDE_TO_RUNS = {
     1: (1,  2,  3),
@@ -117,9 +117,12 @@ def load_all_sheets() -> list:
     return records
 
 
-def select_cwt_rows(records: list, n_select: int = 32):
+def select_cwt_rows(records: list, n_select: int = 32, target: str = "ra"):
     """
     Returns (selected_indices, all_scores).
+    target: "ra" (default, surface roughness) or "feed" (ordinal feed rate
+    3/5/7) -- which run-level quantity to correlate each CWT scale row
+    against when scoring importance.
     selected_indices: sorted array of 32 row indices chosen from 0-63.
     all_scores: (64,) averaged |rho| for each scale row.
     """
@@ -128,23 +131,23 @@ def select_cwt_rows(records: list, n_select: int = 32):
     n_runs      = len(unique_runs)
 
     # Accumulate run-level means (average 3 windows per run)
-    cwt_sum = np.zeros((n_runs, N_FULL, 2), dtype=np.float64)
-    cnt     = np.zeros(n_runs, dtype=int)
-    ra_arr  = np.zeros(n_runs, dtype=np.float64)
+    cwt_sum    = np.zeros((n_runs, N_FULL, 2), dtype=np.float64)
+    cnt        = np.zeros(n_runs, dtype=int)
+    target_arr = np.zeros(n_runs, dtype=np.float64)
 
     for rec in records:
         ri = run_idx[rec["run"]]
         cwt_sum[ri, :, 0] += rec["img"][:, 2]  # 64mexican
         cwt_sum[ri, :, 1] += rec["img"][:, 3]  # 64coif
         cnt[ri]            += 1
-        ra_arr[ri]          = rec["ra"]
+        target_arr[ri]      = rec["ra"] if target == "ra" else FEED_NUM[rec["feed"]]
 
     cwt_mean = cwt_sum / cnt[:, np.newaxis, np.newaxis]  # (24, 64, 2)
 
     scores = np.zeros(N_FULL)
     for row_i in range(N_FULL):
-        s_mex, _ = spearmanr(cwt_mean[:, row_i, 0], ra_arr)
-        s_coi, _ = spearmanr(cwt_mean[:, row_i, 1], ra_arr)
+        s_mex, _ = spearmanr(cwt_mean[:, row_i, 0], target_arr)
+        s_coi, _ = spearmanr(cwt_mean[:, row_i, 1], target_arr)
         s_mex = 0.0 if np.isnan(s_mex) else abs(s_mex)
         s_coi = 0.0 if np.isnan(s_coi) else abs(s_coi)
         scores[row_i] = (s_mex + s_coi) / 2.0
@@ -165,12 +168,24 @@ def build_opt_c(full_img: np.ndarray, sel_rows: np.ndarray) -> np.ndarray:
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--target", choices=["ra", "feed"], default="ra",
+                        help="Which run-level quantity to correlate CWT scale rows against "
+                             "when selecting the top-32 rows (default: ra / surface roughness). "
+                             "target=feed writes to scalograms_32x12_feedopt/ instead.")
+    args = parser.parse_args()
+
+    out_dir_name = "scalograms_32x12" if args.target == "ra" else "scalograms_32x12_feedopt"
+    OUT_DIR = Path(__file__).parent / out_dir_name
+    OUT_DIR.mkdir(exist_ok=True)
+    print(f"Target: {args.target}  ->  output dir: {OUT_DIR.name}/")
+
     print("Loading 72 sheets ...")
     records = load_all_sheets()
     print(f"  {len(records)} sheets loaded")
 
-    print("\nSelecting 32 CWT scale rows ...")
-    sel_rows, scores = select_cwt_rows(records)
+    print(f"\nSelecting 32 CWT scale rows (target={args.target}) ...")
+    sel_rows, scores = select_cwt_rows(records, target=args.target)
     dropped = sorted(set(range(64)) - set(sel_rows.tolist()))
 
     print(f"  Selected indices ({len(sel_rows)}): {sel_rows.tolist()}")

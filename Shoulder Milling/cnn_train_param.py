@@ -69,6 +69,7 @@ FEED_TO_LETTER = {"f3": "a", "f5": "b", "f7": "c"}
 FEED_TO_CLASS  = {"f3": 0, "f5": 1, "f7": 2}
 SIDE_TO_SPEED  = {1: 0, 2: 1, 3: 0, 4: 1, 5: 0, 6: 1, 7: 0, 8: 1}   # 0=2500rpm 1=3500rpm
 SIDE_TO_DOC    = {1: 0, 2: 0, 3: 1, 4: 1, 5: 2, 6: 2, 7: 3, 8: 3}   # 4 Y/Z-doc combos
+ROUGHNESS_THRESHOLD = 0.4   # Ra (um): smooth <= 0.4 < rough
 
 TARGETS = {
     "speed": {
@@ -92,12 +93,24 @@ TARGETS = {
         "train_runs": ["1b", "1c", "2a", "2c", "3b", "3c", "4a", "4c",
                         "5b", "5c", "6a", "6c", "7b", "7c", "8a", "8c"],
     },
+    # Surface roughness, 2-class (smooth Ra<=0.4 vs rough Ra>0.4). Not a
+    # designed process factor like speed/feed/doc, so there's no "isolate
+    # the only varying factor" split to engineer -- reuses doc's split,
+    # which happens to land exactly even (8 smooth/8 rough train, 4/4 test).
+    "roughness": {
+        "num_classes": 2,
+        "class_names": ["smooth", "rough"],
+        "test_runs":  ["1a", "2b", "3a", "4b", "5a", "6b", "7a", "8b"],
+        "train_runs": ["1b", "1c", "2a", "2c", "3b", "3c", "4a", "4c",
+                        "5b", "5c", "6a", "6c", "7b", "7c", "8a", "8c"],
+    },
 }
 
 # Per-target dropout: speed showed no overfitting (and got hurt by dropout in
 # an earlier sweep); doc/feed showed real overfitting (100% train acc while
-# test loss climbed) and benefit from moderate regularisation.
-DEFAULT_DROPOUT = {"speed": 0.0, "doc": 0.15, "feed": 0.15}
+# test loss climbed) and benefit from moderate regularisation. roughness is
+# untested so far -- default to the same moderate value as doc/feed.
+DEFAULT_DROPOUT = {"speed": 0.0, "doc": 0.15, "feed": 0.15, "roughness": 0.15}
 
 # Cascade conditioning: doc conditions on predicted speed; feed conditions on
 # predicted speed + predicted doc. Picked the SINGLE BEST upstream model per
@@ -108,13 +121,15 @@ COND_PARENTS = {"doc": ["speed"], "feed": ["speed", "doc"]}
 COND_DIMS    = {"speed": 2, "doc": 4}
 
 
-def label_for(target: str, side: int, feed: str) -> int:
+def label_for(target: str, side: int, feed: str, ra: float = None) -> int:
     if target == "speed":
         return SIDE_TO_SPEED[side]
     if target == "feed":
         return FEED_TO_CLASS[feed]
     if target == "doc":
         return SIDE_TO_DOC[side]
+    if target == "roughness":
+        return 0 if ra <= ROUGHNESS_THRESHOLD else 1
     raise ValueError(target)
 
 
@@ -260,7 +275,7 @@ class ConditionedModel(nn.Module):
 def load_split(img_dir: Path, target: str):
     df = pd.read_csv(img_dir / "labels.csv")
     df["run_id"] = df["side"].astype(str) + df["feed"].map(FEED_TO_LETTER)
-    df["label"]  = df.apply(lambda r: label_for(target, r["side"], r["feed"]), axis=1)
+    df["label"]  = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
 
     spec     = TARGETS[target]
     train_df = df[df["run_id"].isin(spec["train_runs"])].reset_index(drop=True)
