@@ -6,10 +6,10 @@
 | 1b | f5 | f5 | f5 | f5 | f5 | ✓ |
 | 1c | f7 | f5 | f5 | f5 | f5 | ✗ |
 | 3c | f7 | f5 | f5 | f5 | f5 | ✗ |
-| 6a | f3 | f3 | f5 | f5 | f5 | ✗ |
+| 6a | f3 | f5 | f5 | f5 | f5 | ✗ |
 | 8a | f3 | f5 | f5 | f5 | f5 | ✗ |
 | 8b | f5 | f5 | f5 | f5 | f5 | ✓ |
 | 8c | f7 | f7 | f7 | f7 | f7 | ✓ |
 
-Window accuracy: **54.2%** (13/24)
+Window accuracy: **50.0%** (12/24)
 Run MV accuracy: **50.0%** (4/8)

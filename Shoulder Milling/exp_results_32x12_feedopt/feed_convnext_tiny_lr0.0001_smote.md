@@ -5,11 +5,11 @@
 | 1a | f3 | f5 | f5 | f5 | f5 | ✗ |
 | 1b | f5 | f5 | f5 | f5 | f5 | ✓ |
 | 1c | f7 | f5 | f5 | f3 | f5 | ✗ |
-| 3c | f7 | f7 | f7 | f7 | f7 | ✓ |
+| 3c | f7 | f5 | f7 | f7 | f7 | ✓ |
 | 6a | f3 | f3 | f5 | f5 | f5 | ✗ |
 | 8a | f3 | f3 | f3 | f3 | f3 | ✓ |
-| 8b | f5 | f5 | f3 | f5 | f5 | ✓ |
-| 8c | f7 | f7 | f7 | f7 | f7 | ✓ |
+| 8b | f5 | f3 | f3 | f5 | f3 | ✗ |
+| 8c | f7 | f7 | f3 | f7 | f7 | ✓ |
 
-Window accuracy: **62.5%** (15/24)
-Run MV accuracy: **62.5%** (5/8)
+Window accuracy: **50.0%** (12/24)
+Run MV accuracy: **50.0%** (4/8)

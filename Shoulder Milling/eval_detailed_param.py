@@ -205,7 +205,7 @@ def eval_one(model_path, target, img_dir, arch, device=None, save_md=None, verbo
     # The checkpoint structure may differ from the history when the .pt is from a
     # prior run (e.g. conditioning or dropout added in a later code change).
     # Detect the actual structure from state dict keys and rebuild if needed.
-    state_is_conditioned = any(k.startswith("base.") for k in state)
+    state_is_conditioned = any(k.startswith("base.") or k.startswith("backbone.") for k in state)
     # Dropout wraps the final linear in a Sequential, adding an extra numeric index.
     # Covers resnet (fc.1), efficientnet (classifier.1.1), convnext (classifier.2.1),
     # and ConditionedModel head (head.1).
