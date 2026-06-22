@@ -37,7 +37,10 @@ def main():
             img_dir   = HERE / img_dir_name
             for arch in ARCHS:
                 for lr in LRS:
-                    model_path = HERE / f"models_{target}_{scalo_tag}" / f"{arch}_lr{lr:g}_best.pt"
+                    subdir = f"models_{target}_{scalo_tag}"
+                    model_path = HERE / "models" / subdir / f"{arch}_lr{lr:g}_best.pt"
+                    if not model_path.exists():
+                        model_path = HERE / subdir / f"{arch}_lr{lr:g}_best.pt"
                     if not model_path.exists():
                         print(f"[skip] missing model: {model_path}")
                         rows.append({"target": target, "scalogram": scalo_tag, "arch": arch,
