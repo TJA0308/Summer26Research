@@ -39,10 +39,13 @@ from cnn_train_param import (
 
 ROOT = Path(__file__).parent
 
-# labels.csv "window" column uses w1/w2/w3 for the 3 time windows of each run
-# (deliberately not a/b/c -- that letter is already used for the feed-rate
-# convention in run_id, e.g. "1c" = side 1, feed f7).
-WINDOW_ORDER = {"w1": 1, "w2": 2, "w3": 3}
+# labels.csv "window" column uses w1/w2/.../wN for the N time windows of each
+# run (deliberately not a/b/c -- that letter is already used for the feed-rate
+# convention in run_id, e.g. "1c" = side 1, feed f7). N is 3 for the original
+# scalogram dirs and 9 for the row-split "*_9win" dirs (see
+# split_scalogram_windows.py); parsed from the label itself so either works.
+def _window_num(window_label):
+    return int(str(window_label)[1:])
 
 
 def load_test_windows(img_dir, target):
@@ -58,7 +61,7 @@ def load_test_windows(img_dir, target):
     run_windows = defaultdict(list)
     run_label   = {}
     for _, row in test_df.iterrows():
-        run_windows[row["run_id"]].append((img_dir / row["filename"], WINDOW_ORDER[row["window"]]))
+        run_windows[row["run_id"]].append((img_dir / row["filename"], _window_num(row["window"])))
         run_label[row["run_id"]] = row["label"]
     for run_id in run_windows:
         run_windows[run_id].sort(key=lambda x: x[1])
@@ -238,13 +241,14 @@ def eval_one(model_path, target, img_dir, arch, device=None, save_md=None, verbo
     model.eval()
 
     results = run_evaluation(model, run_windows, run_label, val_tf, device, cond_map)
+    n_windows = len(next(iter(run_windows.values())))
 
     if verbose:
         print(f"\nModel : {Path(model_path).name}")
         print(f"Target: {target}  |  Scalogram: {img_dir.name}  |  Arch: {arch}\n")
-        print_table(results, class_names)
+        print_table(results, class_names, n_windows=n_windows)
 
-    md = to_markdown(results, class_names, Path(model_path).stem, target, img_dir.name, arch)
+    md = to_markdown(results, class_names, Path(model_path).stem, target, img_dir.name, arch, n_windows=n_windows)
     if save_md:
         save_md = Path(save_md)
         save_md.parent.mkdir(parents=True, exist_ok=True)
