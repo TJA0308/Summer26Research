@@ -33,38 +33,43 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent))
 from cnn_train_param import (
-    TARGETS, FEED_TO_LETTER, COND_PARENTS, COND_DIMS,
+    TARGETS, EXP_SPLITS, COND_PARENTS, COND_DIMS,
     build_model, build_transforms, label_for, load_conditioning, ConditionedModel,
 )
 
 ROOT = Path(__file__).parent
 
-# labels.csv "window" column uses w1/w2/.../wN for the N time windows of each
-# run (deliberately not a/b/c -- that letter is already used for the feed-rate
-# convention in run_id, e.g. "1c" = side 1, feed f7). N is 3 for the original
-# scalogram dirs and 9 for the row-split "*_9win" dirs (see
-# split_scalogram_windows.py); parsed from the label itself so either works.
-def _window_num(window_label):
-    return int(str(window_label)[1:])
+# labels.csv "window" column is the time-window letter from the Excel sheet
+# name (a/b/c), with an additional _1/_2/_3 suffix for the row-split
+# "*_9win" dirs (see split_scalogram_windows.py), e.g. "a_2" = sub-window 2
+# of time window "a". Returns a sortable (letter_idx, sub_idx) key so windows
+# order correctly within a run regardless of which form is present.
+_WINDOW_LETTER_ORDER = {"a": 0, "b": 1, "c": 2}
 
 
-def load_test_windows(img_dir, target):
-    """Returns ({run_id: [(path, window_num), ...]}, {run_id: label}) for the
-    held-out test runs of `target` (run_id = side + feed letter, e.g. '1a')."""
+def _window_sort_key(window_label):
+    s = str(window_label)
+    letter, _, sub = s.partition("_")
+    return (_WINDOW_LETTER_ORDER[letter], int(sub) if sub else 0)
+
+
+def load_test_windows(img_dir, target, split_id=""):
+    """Returns ({run_id: [(path, window_label), ...]}, {run_id: label}) for the
+    held-out test runs of `target`. Uses EXP_SPLITS[split_id] when split_id is
+    set, otherwise falls back to the target-specific split from TARGETS."""
     df = pd.read_csv(img_dir / "labels.csv")
-    df["run_id"] = df["side"].astype(str) + df["feed"].map(FEED_TO_LETTER)
-    df["label"]  = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
+    df["label"] = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
 
-    spec    = TARGETS[target]
-    test_df = df[df["run_id"].isin(spec["test_runs"])]
+    test_runs = EXP_SPLITS[split_id]["test_runs"] if split_id in EXP_SPLITS else TARGETS[target]["test_runs"]
+    test_df   = df[df["run_id"].isin(test_runs)]
 
     run_windows = defaultdict(list)
     run_label   = {}
     for _, row in test_df.iterrows():
-        run_windows[row["run_id"]].append((img_dir / row["filename"], _window_num(row["window"])))
+        run_windows[row["run_id"]].append((img_dir / row["filename"], row["window"]))
         run_label[row["run_id"]] = row["label"]
     for run_id in run_windows:
-        run_windows[run_id].sort(key=lambda x: x[1])
+        run_windows[run_id].sort(key=lambda x: _window_sort_key(x[1]))
     return run_windows, run_label
 
 
@@ -88,6 +93,7 @@ def run_evaluation(model, run_windows, run_label, val_tf, device, cond_map=None)
         window_preds = [predict(model, path, val_tf, device, cond_map[path] if cond_map else None)
                          for path, _ in run_windows[run_id]]
         majority     = Counter(window_preds).most_common(1)[0][0]
+
         results.append({
             "run":          run_id,
             "true_label":   true_lbl,
@@ -106,9 +112,10 @@ def _summary(results):
     return win_correct, len(all_preds), n_correct, n_runs
 
 
-def print_table(results, class_names, n_windows=3):
-    w_cols = "  ".join(f"w{i+1}" for i in range(n_windows))
-    header = f"  {'Run':<6}  {'True':<8}  {w_cols}  {'MV':<8}  OK"
+def print_table(results, class_names, window_labels):
+    run_w  = max(6, max(len(str(r["run"])) for r in results))
+    w_cols = "  ".join(window_labels)
+    header = f"  {'Run':<{run_w}}  {'True':<8}  {w_cols}  {'MV':<8}  OK"
     sep    = "  " + "-" * (len(header) - 2)
     print(header)
     print(sep)
@@ -117,7 +124,7 @@ def print_table(results, class_names, n_windows=3):
         wins_s = "  ".join(f"{class_names[p]:>4}" for p in r["window_preds"])
         mv_s   = class_names[r["majority"]]
         ok_s   = "✓" if r["correct"] else "✗"
-        print(f"  {r['run']:<6}  {true_s:<8}  {wins_s}  {mv_s:<8}  {ok_s}")
+        print(f"  {r['run']:<{run_w}}  {true_s:<8}  {wins_s}  {mv_s:<8}  {ok_s}")
     print(sep)
 
     win_correct, n_windows_total, n_correct, n_runs = _summary(results)
@@ -125,13 +132,13 @@ def print_table(results, class_names, n_windows=3):
     print(f"  Run MV accuracy: {n_correct}/{n_runs} = {n_correct/n_runs*100:.1f}%")
 
 
-def to_markdown(results, class_names, model_name, target, scalo_tag, arch, n_windows=3):
-    w_headers = " | ".join(f"w{i+1}" for i in range(n_windows))
+def to_markdown(results, class_names, model_name, target, scalo_tag, arch, window_labels):
+    w_headers = " | ".join(window_labels)
     lines = [
         f"### {model_name}  |  target={target}  |  scalogram={scalo_tag}  |  arch={arch}",
         "",
         f"| Run | True | {w_headers} | MV | ✓/✗ |",
-        "|-----|------|" + "|".join(["----"] * n_windows) + "|-----|-----|",
+        "|-----|------|" + "|".join(["----"] * len(window_labels)) + "|-----|-----|",
     ]
     for r in results:
         true_s = class_names[r["true_label"]]
@@ -150,7 +157,7 @@ def to_markdown(results, class_names, model_name, target, scalo_tag, arch, n_win
 
 
 def eval_one(model_path, target, img_dir, arch, device=None, save_md=None, verbose=True,
-             dropout=None, run_tag=""):
+             dropout=None, run_tag="", split_id=""):
     """Evaluate one trained checkpoint. Returns (results, markdown_string).
 
     If dropout is None, it's auto-detected from the sibling <tag>_history.json
@@ -179,7 +186,7 @@ def eval_one(model_path, target, img_dir, arch, device=None, save_md=None, verbo
     cond_parents = hist.get("cond_parents", [])
 
     _, val_tf = build_transforms()
-    run_windows, run_label = load_test_windows(img_dir, target)
+    run_windows, run_label = load_test_windows(img_dir, target, split_id)
     if not run_windows:
         raise RuntimeError(f"No test windows found for target={target} in {img_dir}")
 
@@ -241,14 +248,14 @@ def eval_one(model_path, target, img_dir, arch, device=None, save_md=None, verbo
     model.eval()
 
     results = run_evaluation(model, run_windows, run_label, val_tf, device, cond_map)
-    n_windows = len(next(iter(run_windows.values())))
+    window_labels = [w for _, w in next(iter(run_windows.values()))]
 
     if verbose:
         print(f"\nModel : {Path(model_path).name}")
         print(f"Target: {target}  |  Scalogram: {img_dir.name}  |  Arch: {arch}\n")
-        print_table(results, class_names, n_windows=n_windows)
+        print_table(results, class_names, window_labels)
 
-    md = to_markdown(results, class_names, Path(model_path).stem, target, img_dir.name, arch, n_windows=n_windows)
+    md = to_markdown(results, class_names, Path(model_path).stem, target, img_dir.name, arch, window_labels)
     if save_md:
         save_md = Path(save_md)
         save_md.parent.mkdir(parents=True, exist_ok=True)
@@ -278,6 +285,9 @@ def main():
     parser.add_argument("--run_tag", default="",
                         help="Optional suffix matching the training run's --run_tag, e.g. 'smote' -- "
                              "used to build the default --model and --save_md paths")
+    parser.add_argument("--split_id", default="", choices=["", "exp11", "exp12"],
+                        help="Experimental unified split (see experimental_splits.md). "
+                             "Results are written to exp_results_<tag>_<split_id>/ when set.")
     args = parser.parse_args()
 
     img_dir    = ROOT / args.img_dir
@@ -299,12 +309,14 @@ def main():
 
     save_md = args.save_md
     if save_md is None and args.lr is not None:
-        save_md = ROOT / f"exp_results_{scalo_tag}" / f"{args.target}_{args.arch}_lr{args.lr:g}{tag_suffix}.md"
+        results_dir = ROOT / (f"exp_results_{scalo_tag}_{args.split_id}" if args.split_id
+                              else f"exp_results_{scalo_tag}")
+        save_md = results_dir / f"{args.target}_{args.arch}_lr{args.lr:g}{tag_suffix}.md"
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
     eval_one(model_path, args.target, img_dir, args.arch, device=device, save_md=save_md,
-             run_tag=args.run_tag)
+             run_tag=args.run_tag, split_id=args.split_id)
 
 
 if __name__ == "__main__":

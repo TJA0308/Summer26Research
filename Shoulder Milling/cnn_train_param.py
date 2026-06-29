@@ -18,9 +18,10 @@ Architectures (--arch): resnet18, resnet50, efficientnet_b0, convnext_tiny
 Each target uses its own fixed 48-train/24-test run-level split, not an
 arbitrary held-out side, because each split is specifically designed so
 the test set isolates the target parameter as the only varying factor
-(see README.md). Run membership is identified by run_id = side + feed
-letter (e.g. "1a" = side 1, f3), matching the labels.csv "side"/"feed"
-columns -- the same convention used to name the scalogram PNGs.
+(see README.md). Run membership is identified by the labels.csv "run_id"
+column, the same condition string used to name the Excel sheets in
+data/Side*.xlsx (e.g. "s25f3y5z25" = speed 2500rpm, feed f3, Y-doc 0.50,
+Z-doc 0.250) and the scalogram PNGs.
 
 SMOTE: training reads pre-generated synthetic samples from
 smote_<target>_labels.csv in --img_dir if present (run
@@ -65,33 +66,85 @@ SEED = 42
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD  = [0.229, 0.224, 0.225]
 
-FEED_TO_LETTER = {"f3": "a", "f5": "b", "f7": "c"}
+# Run/condition identifiers match the Excel sheet names in data/Side*.xlsx
+# verbatim (e.g. "s25f3y5z25" = speed 2500rpm, feed f3, Y-doc 0.50, Z-doc
+# 0.250) -- see README.md "Naming Convention". COND_FROM_SIDE_FEED maps the
+# old internal (side, feed) pair to that condition string; kept only as the
+# one place that correspondence is defined (e.g. for smote/conditioning
+# scripts that still look things up by side/feed from labels.csv).
+COND_FROM_SIDE_FEED = {
+    (1, "f3"): "s25f3y5z25",   (1, "f5"): "s25f5y5z25",   (1, "f7"): "s25f7y5z25",
+    (2, "f3"): "s35f3y5z25",   (2, "f5"): "s35f5y5z25",   (2, "f7"): "s35f7y5z25",
+    (3, "f3"): "s25f3y25z25",  (3, "f5"): "s25f5y25z25",  (3, "f7"): "s25f7y25z25",
+    (4, "f3"): "s35f3y25z25",  (4, "f5"): "s35f5y25z25",  (4, "f7"): "s35f7y25z25",
+    (5, "f3"): "s25f3y5z125",  (5, "f5"): "s25f5y5z125",  (5, "f7"): "s25f7y5z125",
+    (6, "f3"): "s35f3y5z125",  (6, "f5"): "s35f5y5z125",  (6, "f7"): "s35f7y5z125",
+    (7, "f3"): "s25f3y25z125", (7, "f5"): "s25f5y25z125", (7, "f7"): "s25f7y25z125",
+    (8, "f3"): "s35f3y25z125", (8, "f5"): "s35f5y25z125", (8, "f7"): "s35f7y25z125",
+}
+
+
+def cond_id(side: int, feed: str) -> str:
+    return COND_FROM_SIDE_FEED[(side, feed)]
+
+
 FEED_TO_CLASS  = {"f3": 0, "f5": 1, "f7": 2}
 SIDE_TO_SPEED  = {1: 0, 2: 1, 3: 0, 4: 1, 5: 0, 6: 1, 7: 0, 8: 1}   # 0=2500rpm 1=3500rpm
 SIDE_TO_DOC    = {1: 0, 2: 0, 3: 1, 4: 1, 5: 2, 6: 2, 7: 3, 8: 3}   # 4 Y/Z-doc combos
 ROUGHNESS_THRESHOLD = 0.4   # Ra (um): smooth <= 0.4 < rough
 
+# Experimental unified splits: same 8 test runs across all four targets
+# simultaneously (balanced for speed, doc, feed, and roughness).
+# See experimental_splits.md for derivation and balance tables.
+EXP_SPLITS = {
+    "exp11": {   # group pairs: (1,2)=f7  (3,4)=f3  (5,6)=f5  (7,8)=f5
+        "test_runs": [
+            "s25f7y5z25",  "s35f7y5z25",
+            "s25f3y25z25", "s35f3y25z25",
+            "s25f5y5z125", "s35f5y5z125",
+            "s25f5y25z125","s35f5y25z125",
+        ],
+    },
+    "exp12": {   # group pairs: (1,2)=f7  (3,4)=f3  (5,6)=f5  (7,8)=f7
+        "test_runs": [
+            "s25f7y5z25",  "s35f7y5z25",
+            "s25f3y25z25", "s35f3y25z25",
+            "s25f5y5z125", "s35f5y5z125",
+            "s25f7y25z125","s35f7y25z125",
+        ],
+    },
+}
+
 TARGETS = {
     "speed": {
         "num_classes": 2,
         "class_names": ["2500rpm", "3500rpm"],
-        "test_runs":  ["1a", "2a", "3b", "4b", "5c", "6c", "7a", "8a"],
-        "train_runs": ["1b", "1c", "2b", "2c", "3a", "3c", "4a", "4c",
-                        "5a", "5b", "6a", "6b", "7b", "7c", "8b", "8c"],
+        "test_runs":  ["s25f3y5z25", "s35f3y5z25", "s25f5y25z25", "s35f5y25z25",
+                        "s25f7y5z125", "s35f7y5z125", "s25f3y25z125", "s35f3y25z125"],
+        "train_runs": ["s25f5y5z25", "s25f7y5z25", "s35f5y5z25", "s35f7y5z25",
+                        "s25f3y25z25", "s25f7y25z25", "s35f3y25z25", "s35f7y25z25",
+                        "s25f3y5z125", "s25f5y5z125", "s35f3y5z125", "s35f5y5z125",
+                        "s25f5y25z125", "s25f7y25z125", "s35f5y25z125", "s35f7y25z125"],
     },
     "feed": {
         "num_classes": 3,
         "class_names": ["f3", "f5", "f7"],
-        "test_runs":  ["1a", "1b", "1c", "3c", "6a", "8a", "8b", "8c"],
-        "train_runs": ["2a", "2b", "2c", "3a", "3b", "4a", "4b", "4c",
-                        "5a", "5b", "5c", "6b", "6c", "7a", "7b", "7c"],
+        "test_runs":  ["s25f3y5z25", "s25f5y5z25", "s25f7y5z25", "s25f7y25z25",
+                        "s35f3y5z125", "s35f3y25z125", "s35f5y25z125", "s35f7y25z125"],
+        "train_runs": ["s35f3y5z25", "s35f5y5z25", "s35f7y5z25", "s25f3y25z25",
+                        "s25f5y25z25", "s35f3y25z25", "s35f5y25z25", "s35f7y25z25",
+                        "s25f3y5z125", "s25f5y5z125", "s25f7y5z125", "s35f5y5z125",
+                        "s35f7y5z125", "s25f3y25z125", "s25f5y25z125", "s25f7y25z125"],
     },
     "doc": {
         "num_classes": 4,
         "class_names": ["Y50Z250", "Y25Z250", "Y50Z125", "Y25Z125"],
-        "test_runs":  ["1a", "2b", "3a", "4b", "5a", "6b", "7a", "8b"],
-        "train_runs": ["1b", "1c", "2a", "2c", "3b", "3c", "4a", "4c",
-                        "5b", "5c", "6a", "6c", "7b", "7c", "8a", "8c"],
+        "test_runs":  ["s25f3y5z25", "s35f5y5z25", "s25f3y25z25", "s35f5y25z25",
+                        "s25f3y5z125", "s35f5y5z125", "s25f3y25z125", "s35f5y25z125"],
+        "train_runs": ["s25f5y5z25", "s25f7y5z25", "s35f3y5z25", "s35f7y5z25",
+                        "s25f5y25z25", "s25f7y25z25", "s35f3y25z25", "s35f7y25z25",
+                        "s25f5y5z125", "s25f7y5z125", "s35f3y5z125", "s35f7y5z125",
+                        "s25f5y25z125", "s25f7y25z125", "s35f3y25z125", "s35f7y25z125"],
     },
     # Surface roughness, 2-class (smooth Ra<=0.4 vs rough Ra>0.4). Not a
     # designed process factor like speed/feed/doc, so there's no "isolate
@@ -100,9 +153,12 @@ TARGETS = {
     "roughness": {
         "num_classes": 2,
         "class_names": ["smooth", "rough"],
-        "test_runs":  ["1a", "2b", "3a", "4b", "5a", "6b", "7a", "8b"],
-        "train_runs": ["1b", "1c", "2a", "2c", "3b", "3c", "4a", "4c",
-                        "5b", "5c", "6a", "6c", "7b", "7c", "8a", "8c"],
+        "test_runs":  ["s25f3y5z25", "s35f5y5z25", "s25f3y25z25", "s35f5y25z25",
+                        "s25f3y5z125", "s35f5y5z125", "s25f3y25z125", "s35f5y25z125"],
+        "train_runs": ["s25f5y5z25", "s25f7y5z25", "s35f3y5z25", "s35f7y5z25",
+                        "s25f5y25z25", "s25f7y25z25", "s35f3y25z25", "s35f7y25z25",
+                        "s25f5y5z125", "s25f7y5z125", "s35f3y5z125", "s35f7y5z125",
+                        "s25f5y25z125", "s25f7y25z125", "s35f3y25z125", "s35f7y25z125"],
     },
 }
 
@@ -272,19 +328,26 @@ class ConditionedModel(nn.Module):
 
 
 # ── data loading ───────────────────────────────────────────────────────────────
-def load_split(img_dir: Path, target: str):
+def load_split(img_dir: Path, target: str, split_id: str = ""):
     df = pd.read_csv(img_dir / "labels.csv")
-    df["run_id"] = df["side"].astype(str) + df["feed"].map(FEED_TO_LETTER)
     df["label"]  = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
 
-    spec     = TARGETS[target]
-    train_df = df[df["run_id"].isin(spec["train_runs"])].reset_index(drop=True)
-    test_df  = df[df["run_id"].isin(spec["test_runs"])].reset_index(drop=True)
+    if split_id in EXP_SPLITS:
+        test_runs  = EXP_SPLITS[split_id]["test_runs"]
+        all_runs   = df["run_id"].unique().tolist()
+        train_runs = [r for r in all_runs if r not in test_runs]
+    else:
+        spec       = TARGETS[target]
+        test_runs  = spec["test_runs"]
+        train_runs = spec["train_runs"]
+
+    train_df = df[df["run_id"].isin(train_runs)].reset_index(drop=True)
+    test_df  = df[df["run_id"].isin(test_runs)].reset_index(drop=True)
 
     def to_lists(sub):
         paths   = [img_dir / row.filename for _, row in sub.iterrows()]
         labels  = sub["label"].tolist()
-        run_ids = sub["run"].tolist()
+        run_ids = sub["run_id"].tolist()
         return paths, labels, run_ids
 
     return to_lists(train_df), to_lists(test_df)
@@ -304,10 +367,11 @@ def load_conditioning(img_dir: Path, parent_target: str, paths: list, run_tag: s
 
 
 # ── SMOTE ──────────────────────────────────────────────────────────────────────
-def load_smote_samples(img_dir: Path, target: str):
+def load_smote_samples(img_dir: Path, target: str, split_id: str = ""):
     """Loads pre-generated synthetic samples written by smote_generate_param.py
-    (smote_<target>_labels.csv in img_dir). Returns ([], []) if not generated."""
-    csv_path = img_dir / f"smote_{target}_labels.csv"
+    (smote_<target>[_<split_id>]_labels.csv in img_dir). Returns ([], []) if not generated."""
+    suffix   = f"_{split_id}" if split_id else ""
+    csv_path = img_dir / f"smote_{target}{suffix}_labels.csv"
     if not csv_path.exists():
         return [], []
     df = pd.read_csv(csv_path)
@@ -464,6 +528,9 @@ def main():
                              "Also used to locate <parent>_pred_<scalo>_<run_tag>.csv for conditioning.")
     parser.add_argument("--no_condition", action="store_true",
                         help="Disable automatic cascade conditioning even if prediction files exist")
+    parser.add_argument("--split_id", default="", choices=["", "exp11", "exp12"],
+                        help="Experimental unified split (see experimental_splits.md). "
+                             "Empty string (default) uses the target-specific split from README.md.")
     args = parser.parse_args()
 
     dropout = args.dropout if args.dropout is not None else DEFAULT_DROPOUT[args.target]
@@ -482,7 +549,7 @@ def main():
     print(f"Scalogram : {scalo_tag}")
     print(f"Arch      : {args.arch}   LR: {args.lr}   Dropout: {dropout}")
 
-    (tr_paths, tr_labels, tr_runs), (te_paths, te_labels, te_runs) = load_split(img_dir, args.target)
+    (tr_paths, tr_labels, tr_runs), (te_paths, te_labels, te_runs) = load_split(img_dir, args.target, args.split_id)
     print(f"Train windows : {len(tr_paths)}  |  Test windows : {len(te_paths)}")
 
     train_tf, val_tf = build_transforms(args.noise_std)
@@ -517,7 +584,7 @@ def main():
         print("  SMOTE: skipped in conditioned mode (synthetic samples have no real "
               "upstream conditioning value)")
     if use_smote:
-        syn_paths, syn_labels = load_smote_samples(img_dir, args.target)
+        syn_paths, syn_labels = load_smote_samples(img_dir, args.target, args.split_id)
         if syn_paths:
             print(f"  SMOTE: {len(syn_paths)} synthetic windows loaded from "
                   f"smote_{args.target}_labels.csv")
@@ -601,6 +668,7 @@ def main():
             "epochs": args.epochs, "lr": args.lr, "smote": use_smote,
             "dropout": dropout, "label_smooth": args.label_smooth, "noise_std": args.noise_std,
             "run_tag": args.run_tag, "conditioned": conditioned, "cond_parents": cond_parents,
+            "split_id": args.split_id,
             "best_window_acc": round(best_acc, 4), "best_epoch": best_epoch,
             "run_level_acc": round(run_acc, 4), "history": history,
         }, f, indent=2)

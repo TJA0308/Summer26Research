@@ -28,19 +28,22 @@ import pandas as pd
 from PIL import Image
 from sklearn.neighbors import NearestNeighbors
 
-from cnn_train_param import FEED_TO_LETTER, TARGETS, label_for
+from cnn_train_param import TARGETS, EXP_SPLITS, label_for
 
 SEED = 42
 HERE = Path(__file__).parent
 
 
-def load_train_samples(img_dir: Path, target: str):
+def load_train_samples(img_dir: Path, target: str, split_id: str = ""):
     """Returns (vectors [n, H*W] float32, labels [n] int, sample_ids [n] str, img_h, img_w)."""
     df = pd.read_csv(img_dir / "labels.csv")
-    df["run_id"] = df["side"].astype(str) + df["feed"].map(FEED_TO_LETTER)
-    df["label"]  = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
+    df["label"] = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
 
-    train_runs = TARGETS[target]["train_runs"]
+    if split_id in EXP_SPLITS:
+        test_runs  = EXP_SPLITS[split_id]["test_runs"]
+        train_runs = [r for r in df["run_id"].unique() if r not in test_runs]
+    else:
+        train_runs = TARGETS[target]["train_runs"]
     train_df   = df[df["run_id"].isin(train_runs)].reset_index(drop=True)
 
     vectors, labels, sample_ids = [], [], []
@@ -111,29 +114,34 @@ def smote_balance(vectors, labels, sample_ids, rng):
     return syn_vecs, syn_labels, parent_a, parent_b
 
 
-def generate_for(img_dir: Path, target: str, rng):
-    print(f"\n=== {img_dir.name} / {target} ===")
-    vectors, labels, sample_ids, img_h, img_w = load_train_samples(img_dir, target)
+def generate_for(img_dir: Path, target: str, rng, split_id: str = ""):
+    label = f"{img_dir.name} / {target}" + (f" / {split_id}" if split_id else "")
+    print(f"\n=== {label} ===")
+    vectors, labels, sample_ids, img_h, img_w = load_train_samples(img_dir, target, split_id)
     syn_vecs, syn_labels, parent_a, parent_b = smote_balance(vectors, labels, sample_ids, rng)
 
+    suffix = f"_{split_id}" if split_id else ""
     rows = []
     for i, (vec, lbl, pa, pb) in enumerate(zip(syn_vecs, syn_labels, parent_a, parent_b)):
         arr      = np.clip(vec, 0, 255).reshape(img_h, img_w).astype(np.uint8)
-        filename = f"smote_{target}_{lbl}_{i:03d}.png"
+        filename = f"smote_{target}{suffix}_{lbl}_{i:03d}.png"
         Image.fromarray(arr).save(img_dir / filename)
         rows.append({"filename": filename, "label": lbl, "parent_a": pa, "parent_b": pb})
 
-    out_csv = img_dir / f"smote_{target}_labels.csv"
+    out_csv = img_dir / f"smote_{target}{suffix}_labels.csv"
     pd.DataFrame(rows, columns=["filename", "label", "parent_a", "parent_b"]).to_csv(out_csv, index=False)
     print(f"  Saved {len(rows)} synthetic images + labels -> {out_csv}")
 
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--target",  default=None, choices=list(TARGETS.keys()),
-                        help="Limit to one target (default: all of speed/feed/doc)")
-    parser.add_argument("--img_dir", default=None,
+    parser.add_argument("--target",   default=None, choices=list(TARGETS.keys()),
+                        help="Limit to one target (default: all four)")
+    parser.add_argument("--img_dir",  default=None,
                         help="Limit to one scalogram dir, e.g. scalograms_32x12 (default: both)")
+    parser.add_argument("--split_id", default="", choices=["", "exp11", "exp12"],
+                        help="Experimental unified split (see experimental_splits.md). "
+                             "Outputs smote_<target>_<split_id>_labels.csv when set.")
     args = parser.parse_args()
 
     targets  = [args.target] if args.target else list(TARGETS.keys())
@@ -142,7 +150,7 @@ def main():
     rng = np.random.default_rng(SEED)
     for img_dir in img_dirs:
         for target in targets:
-            generate_for(img_dir, target, rng)
+            generate_for(img_dir, target, rng, args.split_id)
 
     print("\nDone.")
 
