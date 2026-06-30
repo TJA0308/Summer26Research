@@ -39,25 +39,30 @@ ROOT  = Path(__file__).parent
 
 def find_best_model(target, scalo_tag, run_tag):
     """Returns (model_path, history_dict, arch) for the highest run_level_acc
-    model among the already-trained arch x lr combos for this target+pipeline."""
+    model among the already-trained arch x lr combos for this target+pipeline.
+    Searches both the consolidated models/<subdir>/ location and the top-level
+    <subdir>/ location so experimental-split models (not consolidated) are found."""
     subdir = f"models_{target}_{scalo_tag}"
-    model_dir = ROOT / "models" / subdir if (ROOT / "models" / subdir).exists() else ROOT / subdir
     suffix = f"_{run_tag}" if run_tag else ""
+    search_dirs = [ROOT / "models" / subdir, ROOT / subdir]
     best = None
-    for arch in ARCHS:
-        for lr in LRS:
-            tag = f"{arch}_lr{lr:g}{suffix}"
-            hist_path = model_dir / f"{tag}_history.json"
-            if not hist_path.exists():
-                continue
-            with open(hist_path) as f:
-                hist = json.load(f)
-            acc = hist.get("run_level_acc", 0.0)
-            if best is None or acc > best[2]:
-                best = (model_dir / f"{tag}_best.pt", hist, acc, arch)
+    for model_dir in search_dirs:
+        if not model_dir.exists():
+            continue
+        for arch in ARCHS:
+            for lr in LRS:
+                tag = f"{arch}_lr{lr:g}{suffix}"
+                hist_path = model_dir / f"{tag}_history.json"
+                if not hist_path.exists():
+                    continue
+                with open(hist_path) as f:
+                    hist = json.load(f)
+                acc = hist.get("run_level_acc", 0.0)
+                if best is None or acc > best[2]:
+                    best = (model_dir / f"{tag}_best.pt", hist, acc, arch)
     if best is None:
         raise FileNotFoundError(
-            f"No trained {target} models found in {model_dir} (suffix='{suffix}') -- train them first."
+            f"No trained {target} models found in {search_dirs} (suffix='{suffix}') -- train them first."
         )
     model_path, hist, acc, arch = best
     print(f"  Best {target} model: {model_path.name}  (run_level_acc={acc:.3f})")
