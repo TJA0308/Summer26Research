@@ -4,12 +4,12 @@
 |-----|------|----|----|----|----|----|----|----|----|----|-----|-----|
 | s25f3y25z25 | rough | rough | rough | rough | rough | rough | rough | rough | rough | rough | rough | ✓ |
 | s25f5y25z125 | smooth | smooth | rough | rough | smooth | rough | rough | smooth | rough | rough | rough | ✗ |
-| s25f5y5z125 | smooth | smooth | rough | rough | smooth | rough | rough | smooth | rough | rough | rough | ✗ |
+| s25f5y5z125 | smooth | smooth | rough | rough | smooth | smooth | rough | smooth | rough | rough | rough | ✗ |
 | s25f7y5z25 | rough | rough | rough | rough | rough | rough | rough | rough | rough | rough | rough | ✓ |
-| s35f3y25z25 | rough | smooth | rough | rough | smooth | rough | rough | smooth | rough | rough | rough | ✓ |
+| s35f3y25z25 | rough | smooth | rough | rough | smooth | rough | rough | rough | rough | rough | rough | ✓ |
 | s35f5y25z125 | rough | smooth | rough | rough | rough | rough | rough | smooth | rough | rough | rough | ✓ |
 | s35f5y5z125 | smooth | smooth | rough | rough | smooth | rough | rough | smooth | rough | rough | rough | ✗ |
-| s35f7y5z25 | smooth | rough | rough | rough | smooth | rough | rough | smooth | rough | rough | rough | ✗ |
+| s35f7y5z25 | smooth | rough | rough | rough | rough | rough | rough | smooth | rough | rough | rough | ✗ |
 
-Window accuracy: **58.3%** (42/72)
+Window accuracy: **59.7%** (43/72)
 Run MV accuracy: **50.0%** (4/8)

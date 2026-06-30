@@ -6,10 +6,10 @@
 | s25f5y25z125 | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | ✓ |
 | s25f5y5z125 | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | ✓ |
 | s25f7y5z25 | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | ✓ |
-| s35f3y25z25 | 3500rpm | 2500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | ✓ |
+| s35f3y25z25 | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | ✓ |
 | s35f5y25z125 | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | ✓ |
 | s35f5y5z125 | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | ✓ |
 | s35f7y5z25 | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | ✓ |
 
-Window accuracy: **98.6%** (71/72)
+Window accuracy: **100.0%** (72/72)
 Run MV accuracy: **100.0%** (8/8)
