@@ -57,18 +57,8 @@ foreach ($split in $splits) {
     }
 }
 
-# ── 4. Consolidate model files into models/ ───────────────────────────────────
-Write-Host "`nConsolidating into models/ ..." -ForegroundColor Green
-New-Item -ItemType Directory -Force -Path "models" | Out-Null
-Get-ChildItem -Directory -Filter "models_*" | ForEach-Object {
-    $dest = "models\$($_.Name)"
-    New-Item -ItemType Directory -Force -Path $dest | Out-Null
-    Get-ChildItem -Path $_.FullName -File | Move-Item -Destination $dest -Force
-    Remove-Item $_.FullName -Recurse -Force
-    Write-Host "  Merged $($_.Name) -> $dest"
-}
-
-# ── 5. Eval: no SMOTE ─────────────────────────────────────────────────────────
+# ── 4. Eval: no SMOTE ─────────────────────────────────────────────────────────
+# Models are in models_{target}_{scalo_tag}/ (where cnn_train_param.py saves them)
 Write-Host "`n=== EVAL (no SMOTE) ===" -ForegroundColor Yellow
 $i = 0
 foreach ($split in $splits) {
@@ -79,7 +69,7 @@ foreach ($split in $splits) {
                 foreach ($lr in $lrs) {
                     $i++
                     $lr_fmt     = if ($lr -eq "1e-3") { "0.001" } else { "0.0001" }
-                    $model_path = "models\models_${target}_${scalo_tag}\${arch}_lr${lr_fmt}_${split}_best.pt"
+                    $model_path = "models_${target}_${scalo_tag}\${arch}_lr${lr_fmt}_${split}_best.pt"
                     Write-Host "[$i/$total] eval $split | $target | $img_dir | $arch | lr=$lr" -ForegroundColor Cyan
                     python eval_detailed_param.py --target $target --img_dir $img_dir `
                         --arch $arch --lr $lr --split_id $split --run_tag $split `
@@ -91,7 +81,7 @@ foreach ($split in $splits) {
     }
 }
 
-# ── 6. Eval: with SMOTE ───────────────────────────────────────────────────────
+# ── 5. Eval: with SMOTE ───────────────────────────────────────────────────────
 Write-Host "`n=== EVAL (with SMOTE) ===" -ForegroundColor Yellow
 $i = 0
 foreach ($split in $splits) {
@@ -103,7 +93,7 @@ foreach ($split in $splits) {
                     $i++
                     $run_tag    = "${split}_smote"
                     $lr_fmt     = if ($lr -eq "1e-3") { "0.001" } else { "0.0001" }
-                    $model_path = "models\models_${target}_${scalo_tag}\${arch}_lr${lr_fmt}_${run_tag}_best.pt"
+                    $model_path = "models_${target}_${scalo_tag}\${arch}_lr${lr_fmt}_${run_tag}_best.pt"
                     Write-Host "[$i/$total] eval $split | $target | $img_dir | $arch | lr=$lr (smote)" -ForegroundColor Cyan
                     python eval_detailed_param.py --target $target --img_dir $img_dir `
                         --arch $arch --lr $lr --split_id $split --run_tag $run_tag `
