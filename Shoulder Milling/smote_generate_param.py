@@ -53,6 +53,8 @@ def load_train_samples(img_dir: Path, target: str, split_id: str = ""):
         img = Image.open(img_dir / row.filename).convert("L")
         if img_h is None:
             img_w, img_h = img.size
+        elif img.size != (img_w, img_h):
+            img = img.resize((img_w, img_h), Image.LANCZOS)
         vectors.append(np.asarray(img, dtype=np.float32).flatten())
         labels.append(int(row.label))
         sample_ids.append(row.sample_id)
