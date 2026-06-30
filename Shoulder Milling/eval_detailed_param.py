@@ -33,7 +33,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent))
 from cnn_train_param import (
-    TARGETS, EXP_SPLITS, COND_PARENTS, COND_DIMS,
+    TARGETS, EXP_SPLITS, COND_PARENTS, COND_DIMS, COND_FROM_SIDE_FEED,
     build_model, build_transforms, label_for, load_conditioning, ConditionedModel,
 )
 
@@ -49,6 +49,9 @@ _WINDOW_LETTER_ORDER = {"a": 0, "b": 1, "c": 2}
 
 def _window_sort_key(window_label):
     s = str(window_label)
+    if s.startswith("w"):
+        # Standard format: "w1", "w2", "w3"
+        return (int(s[1:]), 0)
     letter, _, sub = s.partition("_")
     return (_WINDOW_LETTER_ORDER[letter], int(sub) if sub else 0)
 
@@ -58,6 +61,7 @@ def load_test_windows(img_dir, target, split_id=""):
     held-out test runs of `target`. Uses EXP_SPLITS[split_id] when split_id is
     set, otherwise falls back to the target-specific split from TARGETS."""
     df = pd.read_csv(img_dir / "labels.csv")
+    df["run_id"] = df.apply(lambda r: COND_FROM_SIDE_FEED[(int(r["side"]), r["feed"])], axis=1)
     df["label"] = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
 
     test_runs = EXP_SPLITS[split_id]["test_runs"] if split_id in EXP_SPLITS else TARGETS[target]["test_runs"]

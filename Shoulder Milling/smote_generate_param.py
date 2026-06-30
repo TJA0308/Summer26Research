@@ -28,7 +28,7 @@ import pandas as pd
 from PIL import Image
 from sklearn.neighbors import NearestNeighbors
 
-from cnn_train_param import TARGETS, EXP_SPLITS, label_for
+from cnn_train_param import TARGETS, EXP_SPLITS, COND_FROM_SIDE_FEED, label_for
 
 SEED = 42
 HERE = Path(__file__).parent
@@ -37,6 +37,7 @@ HERE = Path(__file__).parent
 def load_train_samples(img_dir: Path, target: str, split_id: str = ""):
     """Returns (vectors [n, H*W] float32, labels [n] int, sample_ids [n] str, img_h, img_w)."""
     df = pd.read_csv(img_dir / "labels.csv")
+    df["run_id"] = df.apply(lambda r: COND_FROM_SIDE_FEED[(int(r["side"]), r["feed"])], axis=1)
     df["label"] = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
 
     if split_id in EXP_SPLITS:

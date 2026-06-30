@@ -330,6 +330,7 @@ class ConditionedModel(nn.Module):
 # ── data loading ───────────────────────────────────────────────────────────────
 def load_split(img_dir: Path, target: str, split_id: str = ""):
     df = pd.read_csv(img_dir / "labels.csv")
+    df["run_id"] = df.apply(lambda r: COND_FROM_SIDE_FEED[(int(r["side"]), r["feed"])], axis=1)
     df["label"]  = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
 
     if split_id in EXP_SPLITS:
