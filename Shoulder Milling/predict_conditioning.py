@@ -30,7 +30,7 @@ import pandas as pd
 import torch
 from PIL import Image
 
-from cnn_train_param import TARGETS, build_model, build_transforms, label_for
+from cnn_train_param import TARGETS, COND_DIMS, COND_PARENTS, build_model, build_transforms, label_for, load_conditioning, ConditionedModel
 
 ARCHS = ["resnet18", "resnet50", "efficientnet_b0", "convnext_tiny"]
 LRS   = [1e-3, 1e-4]
@@ -87,19 +87,48 @@ def main():
     model_path, hist, arch = find_best_model(args.target, scalo_tag, args.run_tag)
     spec = TARGETS[args.target]
 
-    model = build_model(arch, spec["num_classes"], dropout=hist.get("dropout", 0.0)).to(device)
-    state = torch.load(model_path, map_location=device, weights_only=True)
+    state   = torch.load(model_path, map_location=device, weights_only=True)
+    dropout = hist.get("dropout", 0.0)
+    cond_parents = hist.get("cond_parents", [])
+
+    # Detect conditioned checkpoint from state dict keys
+    state_is_conditioned = any(k.startswith("base.") or k.startswith("backbone.") for k in state)
+    if state_is_conditioned:
+        cond_dims = [COND_DIMS[p] for p in cond_parents] if cond_parents else [COND_DIMS.get(args.target, 2)]
+        model = ConditionedModel(arch, spec["num_classes"], cond_dims, dropout=dropout).to(device)
+    else:
+        model = build_model(arch, spec["num_classes"], dropout=dropout).to(device)
     model.load_state_dict(state)
     model.eval()
 
     _, val_tf = build_transforms()
     df = pd.read_csv(img_dir / "labels.csv")
 
+    # Load parent conditioning values if model is conditioned
+    all_paths = [img_dir / row.filename for _, row in df.iterrows()]
+    cond_map = None
+    if state_is_conditioned and cond_parents:
+        per_parent = []
+        for parent in cond_parents:
+            vals = load_conditioning(img_dir, parent, all_paths, args.run_tag)
+            if vals is None:
+                raise RuntimeError(
+                    f"Model is conditioned on '{parent}' but the conditioning CSV is missing -- "
+                    f"run predict_conditioning.py for '{parent}' first."
+                )
+            per_parent.append(vals)
+        cond_map = {p: [pv[i] for pv in per_parent] for i, p in enumerate(all_paths)}
+
     rows, n_correct = [], 0
-    for _, row in df.iterrows():
-        img  = Image.open(img_dir / row.filename).convert("RGB")
+    for i, (_, row) in enumerate(df.iterrows()):
+        path = img_dir / row.filename
+        img  = Image.open(path).convert("RGB")
         t    = val_tf(img).unsqueeze(0).to(device)
-        pred = model(t).argmax(1).item()
+        if cond_map is not None:
+            conds = [torch.tensor([v], device=device) for v in cond_map[path]]
+            pred  = model(t, *conds).argmax(1).item()
+        else:
+            pred = model(t).argmax(1).item()
         true = label_for(args.target, row.side, row.feed)
         n_correct += int(pred == true)
         rows.append({"filename": row.filename, "pred_label": pred})
