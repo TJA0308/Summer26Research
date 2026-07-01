@@ -5,11 +5,11 @@
 | s25f3y25z25 | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | ✓ |
 | s25f5y25z125 | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | ✓ |
 | s25f5y5z125 | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | ✓ |
-| s25f7y5z25 | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 3500rpm | 2500rpm | 2500rpm | 2500rpm | ✓ |
-| s35f3y25z25 | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | ✓ |
-| s35f5y25z125 | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 2500rpm | 3500rpm | ✓ |
-| s35f5y5z125 | 3500rpm | 3500rpm | 2500rpm | 2500rpm | 3500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | ✗ |
-| s35f7y5z25 | 3500rpm | 2500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | 3500rpm | ✓ |
+| s25f7y5z25 | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | ✓ |
+| s35f3y25z25 | 3500rpm | 2500rpm | 2500rpm | 3500rpm | 2500rpm | 2500rpm | 3500rpm | 2500rpm | 2500rpm | 3500rpm | 2500rpm | ✗ |
+| s35f5y25z125 | 3500rpm | 2500rpm | 2500rpm | 3500rpm | 2500rpm | 3500rpm | 3500rpm | 2500rpm | 2500rpm | 3500rpm | 2500rpm | ✗ |
+| s35f5y5z125 | 3500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | ✗ |
+| s35f7y5z25 | 3500rpm | 2500rpm | 3500rpm | 3500rpm | 2500rpm | 2500rpm | 3500rpm | 2500rpm | 2500rpm | 2500rpm | 2500rpm | ✗ |
 
-Window accuracy: **86.1%** (62/72)
-Run MV accuracy: **87.5%** (7/8)
+Window accuracy: **63.9%** (46/72)
+Run MV accuracy: **50.0%** (4/8)

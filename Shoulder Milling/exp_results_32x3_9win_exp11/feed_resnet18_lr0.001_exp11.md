@@ -8,8 +8,8 @@
 | s25f7y5z25 | f7 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | ✗ |
 | s35f3y25z25 | f3 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | ✗ |
 | s35f5y25z125 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | ✓ |
-| s35f5y5z125 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | ✓ |
+| s35f5y5z125 | f5 | f5 | f7 | f5 | f5 | f7 | f5 | f5 | f5 | f5 | f5 | ✓ |
 | s35f7y5z25 | f7 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | f5 | ✗ |
 
-Window accuracy: **50.0%** (36/72)
+Window accuracy: **47.2%** (34/72)
 Run MV accuracy: **50.0%** (4/8)
