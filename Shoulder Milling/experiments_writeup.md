@@ -84,7 +84,7 @@ hit 87.5% run accuracy in the same smoke test.
 ## 4. Full roughness + feedopt sweeps (`de281e3`)
 
 - Roughness: 16 models (2 scalogram sizes × 4 archs × 2 LRs, no SMOTE). Best: **100% run accuracy** (efficientnet_b0/32x12/lr=1e-4).
-- Feed on feedopt scalograms, unconditioned: 16 models (smote tag). Best **71.4% run accuracy excluding run 1c** (5/7) vs. 57.1% (4/7) on the standard Ra-tuned scalograms over the same 7 runs — confirms the feedopt scale selection helps, independent of conditioning.
+- Feed on feedopt scalograms, unconditioned: 16 models (smote tag). Best **71.4% run accuracy excluding run s25f7y5z25** (5/7) vs. 57.1% (4/7) on the standard Ra-tuned scalograms over the same 7 runs — confirms the feedopt scale selection helps, independent of conditioning.
 - Speed+doc retrained on the feedopt dirs as well, purely to produce the parent-prediction CSVs needed to condition feed in the next step.
 
 
@@ -132,9 +132,9 @@ New project-best for feed: **efficientnet_b0 / lr=1e-4 /
 `scalograms_32x3_feedopt_9win`, conditioned on speed+doc: 87.5% (7/8) run
 accuracy** — beats the 75% ceiling that had held since §2. Confirmed
 genuinely conditioned via its `history.json`
-(`conditioned: True, cond_parents: ['speed', 'doc']`). It gets both `1c` and
-`8b` right — the two runs most consistently missed in every prior
-conditioned-feed sweep — and only misses `6a`. Window-level accuracy for this
+(`conditioned: True, cond_parents: ['speed', 'doc']`). It gets both `s25f7y5z25` and
+`s35f5y25z125` right — the two runs most consistently missed in every prior
+conditioned-feed sweep — and only misses `s35f3y5z125`. Window-level accuracy for this
 model is just 45.8%, lower than several configs that scored worse at the run
 level: the win comes from majority-vote-over-9 smoothing out per-window
 noise, not from the model being more accurate window-by-window.
@@ -189,7 +189,7 @@ across multiple training seeds), not the windowing approach in general.
 | approach | best run accuracy | source |
 |---|---|---|
 | unconditioned, Ra-tuned scale rows (32x12/32x3) | 75% | §2 |
-| unconditioned, feedopt scale rows, excl. run 1c | 71.4% | §4 |
+| unconditioned, feedopt scale rows, excl. run s25f7y5z25 | 71.4% | §4 |
 | cascade-conditioned, feedopt scale rows, 3-window | 75% | commit `953654d` |
 | cascade-conditioned, feedopt scale rows, 9-window | **87.5%** | §6 |
 
@@ -205,3 +205,91 @@ since the first SMOTE sweep — though §6 shows this gain was not uniform:
 most other arch/lr configs got noisier (lower average accuracy) under the
 9-window split, so the improvement is real but config-sensitive, not a
 guaranteed win from windowing alone.
+
+**Update (§7): the 87.5% figure above does not reproduce and should not be
+treated as the project record — see §7 for the bug that likely produced it
+and the honest, leakage-controlled numbers that replace it.**
+
+## 7. Conditioning bug fix, multi-task alternative, and honest leave-one-side-out CV
+
+**Bug found:** `predict_conditioning.py` was calling conditioned models with
+`model(t)` — no conditioning tensors passed at all — when generating the
+parent-prediction CSVs that downstream cascade stages (doc conditions on
+speed, feed conditions on speed+doc) consume at training time. Fixed in
+commit `e15d9ed`. Post-fix, the identical config that produced the 87.5%
+figure above (efficientnet_b0/lr=1e-4/`scalograms_32x3_feedopt_9win`,
+cascade-conditioned) reruns at **37.5%** — a 50pp swing on the exact same
+arch/lr/split. The real cascade-conditioned feed ceiling, checked across the
+original split and the cross-target-balanced exp11/exp12 splits (both
+`32x12_feedopt_9win` and `32x3_feedopt_9win`), is consistently **~62.5% run
+accuracy / ~41–46% window accuracy** — no better than unconditioned. **The
+87.5% figure should be treated as a bug artifact, not a reproducible result.**
+
+**Multi-task alternative** (`cnn_train_multitask.py`): one shared backbone +
+three ground-truth-supervised heads (speed/doc/feed) trained jointly,
+replacing the cascade's predicted-label conditioning entirely. Swept
+efficientnet_b0/lr=1e-4 across `{32x3_feedopt, 32x12_feedopt}` × `{base,
+exp11, exp12}` × 3 seeds (`run_multitask_feed.ps1`). Feed run accuracy
+(hard-vote, mean ± std over seeds):
+
+| scalogram | split | run acc |
+|---|---|---|
+| 32x12_feedopt | base | 66.7% ± 5.9% |
+| 32x12_feedopt | exp11 | 50.0% ± 0.0% |
+| 32x12_feedopt | exp12 | 58.3% ± 11.8% |
+| 32x3_feedopt | base | 54.2% ± 15.6% |
+| 32x3_feedopt | exp11 | 70.8% ± 5.9% |
+| 32x3_feedopt | exp12 | 54.2% ± 5.9% |
+
+Pre-registered verdict (`summarize_multitask.py`, fail if run acc ≤62.5% on
+2+ of 3 splits): **FAIL on both scalogram dirs.** Multi-task relocates where
+the lucky spikes land (66.7–70.8% vs. the cascade's 62.5% peaks) but doesn't
+reliably clear the bar. `32x12_feedopt`/exp11's exact 50.0% ± 0.0% across all
+3 seeds (zero variance) is worth a follow-up look — usually indicates the
+model collapsed to the same prediction pattern regardless of initialization.
+
+**Leave-one-side-out CV** (`cv_evaluate.py`): pools predictions across all 8
+leave-one-side-out folds (24 runs total, 4.2pp granularity, no test-set-driven
+model or checkpoint selection) — the cleanest read available, since every
+number above still rests on picking configs and epochs using the same 8-run
+test set they're scored on. HGB (StandardScaler + PCA-20 +
+HistGradientBoosting on native pixels, same recipe as `baseline_classical.py`)
+vs. `tiny_cnn` (~40K-param from-scratch CNN, no ImageNet pretraining, no
+224×224 upsample):
+
+| scalogram | model | run acc |
+|---|---|---|
+| 32x3_feedopt | hgb | 41.7% |
+| 32x3_feedopt | tiny_cnn | ~39–42% |
+| 32x12_feedopt | hgb | 54.2% |
+| 32x12_feedopt | tiny_cnn | ~46–50% |
+| 64x2_full (see below) | hgb | 45.8% hard / **54.2% soft** |
+| 64x2_full | tiny_cnn | 40.3% ± 4.8% |
+
+Two findings that revise earlier sections of this writeup:
+1. **32x12 beats 32x3 under clean CV** (54.2% vs. 41.7% hgb) — the opposite
+   of what the original 8-run splits suggested throughout §1–§6. The earlier
+   "32x3 ties/beats 32x12" conclusion was itself resting on 8-run-split noise.
+2. **HGB beats tiny_cnn everywhere tried.** None of the deep-learning
+   machinery — cascade, multi-task, or even a from-scratch CNN — clears
+   simple PCA + classical ML once evaluated honestly. The bottleneck looks
+   like the *features*, not model capacity.
+
+**Option E** (`build_option_e_scalograms.py`, `scalograms_64x2_full/`): tests
+whether the Ra/feed-Spearman top-32 row selection used by every scalogram
+variant above is discarding useful coarse-scale information, per the §3
+finding that ~8 discarded rows (36–50) "carry real feed signal." Keeps ALL
+64 CWT scale rows from both wavelet families (64mexican, 64coif), no row
+selection, no FFT/DWT/time-stat columns (avoids reintroducing the dead-zone
+problem §3/Option D was built to avoid). Result: HGB soft-vote run accuracy
+54.2%, tying `32x12_feedopt`'s clean-CV result without needing the Spearman
+selection step at all — selection isn't hurting, but skipping it doesn't
+clearly help either.
+
+**Bottom line as of §7:** the honest, leakage-controlled ceiling for feed
+rate prediction on this pipeline is **~40–55% run accuracy** (pooled 24-run
+CV), not the 87.5%/75% figures reported in §1–§6. Feed rate looks like a
+genuinely hard target given this sensor/feature setup — a features-and-data
+problem more than a modeling problem, since simple classical ML matches
+every CNN variant tried so far.</new_string>
+
