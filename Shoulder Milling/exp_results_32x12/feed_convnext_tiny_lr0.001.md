@@ -1,15 +1,15 @@
 ### convnext_tiny_lr0.001_best  |  target=feed  |  scalogram=scalograms_32x12  |  arch=convnext_tiny
 
-| Run | True | w1 | w2 | w3 | MV | ✓/✗ |
+| Run | True | a | b | c | MV | ✓/✗ |
 |-----|------|----|----|----|-----|-----|
-| 1a | f3 | f7 | f7 | f7 | f7 | ✗ |
-| 1b | f5 | f7 | f7 | f7 | f7 | ✗ |
-| 1c | f7 | f7 | f7 | f7 | f7 | ✓ |
-| 3c | f7 | f7 | f7 | f7 | f7 | ✓ |
-| 6a | f3 | f7 | f7 | f7 | f7 | ✗ |
-| 8a | f3 | f7 | f7 | f7 | f7 | ✗ |
-| 8b | f5 | f7 | f7 | f7 | f7 | ✗ |
-| 8c | f7 | f7 | f7 | f7 | f7 | ✓ |
+| s25f3y5z25 | f3 | f7 | f7 | f7 | f7 | ✗ |
+| s25f5y5z25 | f5 | f7 | f7 | f7 | f7 | ✗ |
+| s25f7y5z25 | f7 | f7 | f7 | f7 | f7 | ✓ |
+| s25f7y25z25 | f7 | f7 | f7 | f7 | f7 | ✓ |
+| s35f3y5z125 | f3 | f7 | f7 | f7 | f7 | ✗ |
+| s35f3y25z125 | f3 | f7 | f7 | f7 | f7 | ✗ |
+| s35f5y25z125 | f5 | f7 | f7 | f7 | f7 | ✗ |
+| s35f7y25z125 | f7 | f7 | f7 | f7 | f7 | ✓ |
 
 Window accuracy: **37.5%** (9/24)
 Run MV accuracy: **37.5%** (3/8)

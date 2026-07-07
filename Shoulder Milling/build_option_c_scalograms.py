@@ -16,7 +16,9 @@ Algorithm
 4. Column-wise z-score normalise (fit on all 72 windows).
    Clip to +-3 sigma, rescale to [0, 255], save as grayscale PNG.
 5. Output:
-     scalograms_32x12/{side}{feed}{window}.png   72 images (32 x 12 px), e.g. "1a1.png"
+     scalograms_32x12/{run_id}_{window}.png   72 images (32 x 12 px), e.g.
+       "s25f3y5z25_a.png" -- run_id + window letter match the Excel sheet
+       name in data/Side*.xlsx verbatim.
      scalograms_32x12/labels.csv
      scalograms_32x12/selected_scales.json
      scalograms_32x12/scale_selection_summary.png
@@ -52,15 +54,6 @@ SIDE_TO_RUNS = {
     7: (10, 11, 12),
     8: (22, 23, 24),
 }
-
-# Sample ID convention (shared with the train/test split README):
-# [side 1-8][feed letter a=f3/b=f5/c=f7][time-window number 1/2/3]
-FEED_TO_LETTER = {"f3": "a", "f5": "b", "f7": "c"}
-WINDOW_TO_NUM  = {"a": "1", "b": "2", "c": "3"}
-
-
-def sample_id(side: int, feed: str, window: str) -> str:
-    return f"{side}{FEED_TO_LETTER[feed]}{WINDOW_TO_NUM[window]}"
 
 
 def ra_class(ra: float) -> str:
@@ -104,11 +97,12 @@ def load_all_sheets() -> list:
         for sheet in xl.sheet_names:
             fk      = "f3" if "f3" in sheet else ("f5" if "f5" in sheet else "f7")
             run_num = run_nums[{"f3": 0, "f5": 1, "f7": 2}[fk]]
-            window  = sheet.split("_")[-1]
+            run_id, window = sheet.rsplit("_", 1)  # e.g. "s25f3y5z25_a" -> ("s25f3y5z25", "a")
             img     = sheet_to_image(xl.parse(sheet, header=None))
             records.append({
                 "img":    img,
                 "run":    run_num,
+                "run_id": run_id,
                 "side":   side_num,
                 "feed":   fk,
                 "window": window,
@@ -219,14 +213,15 @@ def main():
     # Save PNGs + labels
     rows = []
     for i, rec in enumerate(records):
-        sid   = sample_id(rec["side"], rec["feed"], rec["window"])
+        sid   = f"{rec['run_id']}_{rec['window']}"
         fname = f"{sid}.png"
         Image.fromarray(imgs_u8[i]).save(OUT_DIR / fname)
         rows.append({
             "filename":  fname,
             "sample_id": sid,
+            "run_id":    rec["run_id"],
+            "window":    rec["window"],
             "run":       rec["run"],
-            "window":    f"w{WINDOW_TO_NUM[rec['window']]}",
             "side":      rec["side"],
             "feed":      rec["feed"],
             "ra":        rec["ra"],

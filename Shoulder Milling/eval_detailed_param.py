@@ -33,7 +33,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent))
 from cnn_train_param import (
-    TARGETS, EXP_SPLITS, COND_PARENTS, COND_DIMS, COND_FROM_SIDE_FEED,
+    TARGETS, EXP_SPLITS, COND_DIMS, COND_FROM_SIDE_FEED,
     build_model, build_transforms, label_for, load_conditioning, ConditionedModel,
 )
 

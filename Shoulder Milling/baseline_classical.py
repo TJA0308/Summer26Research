@@ -25,7 +25,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
-from cnn_train_param import FEED_TO_LETTER, TARGETS, label_for
+from cnn_train_param import TARGETS, label_for
 
 ROOT = Path(__file__).parent
 
@@ -40,8 +40,7 @@ MODELS = {
 
 def load_native(img_dir: Path, target: str):
     df = pd.read_csv(img_dir / "labels.csv")
-    df["run_id"] = df["side"].astype(str) + df["feed"].map(FEED_TO_LETTER)
-    df["label"]  = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
+    df["label"] = df.apply(lambda r: label_for(target, r["side"], r["feed"], r.get("ra")), axis=1)
 
     spec     = TARGETS[target]
     train_df = df[df["run_id"].isin(spec["train_runs"])].reset_index(drop=True)
