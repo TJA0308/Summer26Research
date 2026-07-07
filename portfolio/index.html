@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shreyas Kakkar — Developer & Builder</title>
+<meta name="description" content="Portfolio of Shreyas Kakkar — software engineer, ML researcher, and builder of interactive tools." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- Loading screen -->
+<div class="loader" id="loader" aria-hidden="true">
+  <div class="loader-logo">
+    <svg viewBox="0 0 80 80" width="80" height="80">
+      <circle class="loader-ring" cx="40" cy="40" r="32" fill="none" stroke="url(#loaderGrad)" stroke-width="3" stroke-linecap="round" />
+      <defs>
+        <linearGradient id="loaderGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#7dd3fc"/>
+          <stop offset="50%" stop-color="#a78bfa"/>
+          <stop offset="100%" stop-color="#f472b6"/>
+        </linearGradient>
+      </defs>
+    </svg>
+    <div class="loader-mark">SK</div>
+  </div>
+</div>
+
+<!-- Animated background -->
+<div class="bg-gradient" aria-hidden="true">
+  <div class="bg-shift"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="grid-overlay"></div>
+</div>
+
+<!-- Particle canvas -->
+<canvas id="particleCanvas" class="particle-canvas" aria-hidden="true"></canvas>
+
+<!-- Nav -->
+<nav class="nav">
+  <a href="#top" class="nav-brand">
+    <span class="brand-mark">SK</span>
+    <span class="brand-name">Shreyas Kakkar</span>
+  </a>
+  <ul class="nav-links" id="navLinks">
+    <li><a href="#projects">Projects</a></li>
+    <li><a href="#skills">Skills</a></li>
+    <li><a href="#about">About</a></li>
+    <li><a href="#contact">Contact</a></li>
+    <span class="nav-underline" id="navUnderline"></span>
+  </ul>
+  <button class="nav-toggle" aria-label="Toggle menu" id="navToggle">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<!-- Hero -->
+<header id="top" class="hero">
+  <div class="hero-inner">
+    <div class="hero-tag reveal">
+      <span class="pulse-dot"></span>
+      <span>Available for opportunities</span>
+    </div>
+    <h1 class="hero-title">
+      <span class="line reveal">Hi, I'm <span class="grad-text glitch" data-text="Shreyas Kakkar">Shreyas Kakkar</span>.</span>
+      <span class="line reveal">I build things that <span class="type-target" id="typeTarget">think</span>.</span>
+    </h1>
+    <p class="hero-sub reveal">
+      Software engineer, ML researcher, and relentless tinkerer. I build interactive tools,
+      computer vision systems, and machine learning models that solve real problems — from
+      a collaborative math whiteboard to sentiment-driven stock prediction.
+    </p>
+    <div class="hero-cta reveal">
+      <a href="#projects" class="btn btn-primary">
+        View Projects
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </a>
+      <a href="https://github.com/shreyask06" target="_blank" rel="noopener" class="btn btn-ghost">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2c-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.51-1.47.11-3.06 0 0 .97-.31 3.18 1.18a11 11 0 016.79.65C18.28 3.9 19.25 4.2 19.25 4.2c.62 1.59.23 2.77.11 3.06.74.81 1.19 1.84 1.19 3.1 0 4.43-2.69 5.4-5.25 5.69.41.35.77 1.05.77 2.12v3.14c0 .31.21.68.79.56A11.5 11.5 0 0023.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+        GitHub
+      </a>
+    </div>
+    <div class="hero-stats reveal">
+      <div class="stat"><span class="stat-num" data-target="20">0</span><span class="stat-label">Projects Shipped</span></div>
+      <div class="stat"><span class="stat-num" data-target="10">0</span><span class="stat-label">Languages</span></div>
+      <div class="stat"><span class="stat-num" data-target="5">0</span><span class="stat-label">Years Coding</span></div>
+    </div>
+  </div>
+  <div class="scroll-hint" aria-hidden="true">
+    <span>Scroll</span>
+    <div class="scroll-line"></div>
+  </div>
+</header>
+
+<!-- Projects -->
+<section id="projects" class="section">
+  <div class="section-head">
+    <div class="eyebrow">01 — Selected Work</div>
+    <h2 class="section-title">Projects</h2>
+    <p class="section-sub">A curated selection, ordered by impact and complexity.</p>
+  </div>
+
+  <div class="projects-grid">
+
+    <!-- MathBoard - featured -->
+    <article class="project-card featured" data-tilt>
+      <div class="card-shimmer"></div>
+      <div class="card-glow"></div>
+      <div class="card-badge">Featured</div>
+      <div class="card-visual">
+        <div class="visual-mathboard">
+          <div class="mb-toolbar"><span></span><span></span><span></span></div>
+          <div class="mb-canvas">
+            <div class="mb-eq">∫<sub>0</sub><sup>π</sup> sin(x) dx = 2</div>
+            <div class="mb-eq mb-eq-2">f'(x) = lim<sub>h→0</sub> [f(x+h) − f(x)] / h</div>
+            <div class="mb-scribble"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="tech-row">
+          <span class="chip">React</span>
+          <span class="chip">Python</span>
+          <span class="chip">Flask</span>
+          <span class="chip">R</span>
+          <span class="chip">Render</span>
+        </div>
+        <h3 class="card-title">MathBoard</h3>
+        <p class="card-desc">
+          A collaborative digital whiteboard purpose-built for mathematics. Combines a React
+          frontend with a Python/R backend for equation rendering, symbolic computation, and
+          real-time drawing — making it easy to visualize, teach, and explore math live.
+        </p>
+        <a class="card-link" href="https://github.com/ShreyasK06/MathBoard" target="_blank" rel="noopener">
+          View on GitHub
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
+        </a>
+      </div>
+    </article>
+
+    <!-- Chess -->
+    <article class="project-card" data-tilt>
+      <div class="card-shimmer"></div>
+      <div class="card-glow"></div>
+      <div class="card-visual visual-chess">
+        <div class="chessboard"></div>
+      </div>
+      <div class="card-body">
+        <div class="tech-row">
+          <span class="chip">JavaScript</span>
+          <span class="chip">Node.js</span>
+        </div>
+        <h3 class="card-title">Chess Game</h3>
+        <p class="card-desc">
+          A fully-playable chess engine with move validation, check/checkmate detection, and
+          a clean interactive UI. Built from scratch in JavaScript with a Node.js backend for
+          multiplayer capability.
+        </p>
+        <a class="card-link" href="https://github.com/ShreyasK06/ChessNodeJS" target="_blank" rel="noopener">
+          View on GitHub
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
+        </a>
+      </div>
+    </article>
+
+    <!-- Sentiment Stock -->
+    <article class="project-card" data-tilt>
+      <div class="card-shimmer"></div>
+      <div class="card-glow"></div>
+      <div class="card-visual visual-stock">
+        <svg viewBox="0 0 200 100" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="stockGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#7dd3fc" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#7dd3fc" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path class="stock-fill" d="M0,80 L20,70 L40,75 L60,50 L80,55 L100,35 L120,40 L140,25 L160,30 L180,15 L200,20 L200,100 L0,100 Z" fill="url(#stockGrad)"/>
+          <path class="stock-line" d="M0,80 L20,70 L40,75 L60,50 L80,55 L100,35 L120,40 L140,25 L160,30 L180,15 L200,20" fill="none" stroke="#7dd3fc" stroke-width="1.5"/>
+        </svg>
+        <div class="stock-badge">60% acc.</div>
+      </div>
+      <div class="card-body">
+        <div class="tech-row">
+          <span class="chip">Python</span>
+          <span class="chip">LightGBM</span>
+          <span class="chip">NLP</span>
+          <span class="chip">Pandas</span>
+        </div>
+        <h3 class="card-title">Sentiment Stock Analysis</h3>
+        <p class="card-desc">
+          A LightGBM classifier that fuses news/social sentiment signals with statistical
+          market features to predict short-term price direction. Achieves ~60% accuracy on
+          held-out test data — significantly above a coin-flip baseline.
+        </p>
+        <a class="card-link" href="https://github.com/shreyask06" target="_blank" rel="noopener">
+          View on GitHub
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
+        </a>
+      </div>
+    </article>
+
+    <!-- RPS CV -->
+    <article class="project-card" data-tilt>
+      <div class="card-shimmer"></div>
+      <div class="card-glow"></div>
+      <div class="card-visual visual-rps">
+        <div class="rps-icons">
+          <div class="rps-icon">✊</div>
+          <div class="rps-icon">✋</div>
+          <div class="rps-icon">✌️</div>
+        </div>
+        <div class="rps-scanline"></div>
+      </div>
+      <div class="card-body">
+        <div class="tech-row">
+          <span class="chip">Python</span>
+          <span class="chip">OpenCV</span>
+          <span class="chip">MediaPipe</span>
+        </div>
+        <h3 class="card-title">Rock Paper Scissors CV</h3>
+        <p class="card-desc">
+          Real-time Rock Paper Scissors played through your webcam. OpenCV + hand-landmark
+          detection recognizes gestures, and an AI mode brings a smart opponent that adapts
+          to your play patterns.
+        </p>
+        <a class="card-link" href="https://github.com/shreyask06" target="_blank" rel="noopener">
+          View on GitHub
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
+        </a>
+      </div>
+    </article>
+
+    <!-- Delphi -->
+    <article class="project-card" data-tilt>
+      <div class="card-shimmer"></div>
+      <div class="card-glow"></div>
+      <div class="card-visual visual-delphi">
+        <div class="delphi-chat">
+          <div class="chat-bubble user">How much can I save this month?</div>
+          <div class="chat-bubble bot">Based on your spending, ~$412 is realistic.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="tech-row">
+          <span class="chip">Python</span>
+          <span class="chip">LLM</span>
+          <span class="chip">Finance</span>
+        </div>
+        <h3 class="card-title">Delphi</h3>
+        <p class="card-desc">
+          A personal finance coach that ingests transaction data and delivers actionable,
+          personalized guidance on budgeting, saving, and investment habits — conversational
+          and context-aware.
+        </p>
+        <a class="card-link" href="https://github.com/shreyask06" target="_blank" rel="noopener">
+          View on GitHub
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
+        </a>
+      </div>
+    </article>
+
+    <!-- FridgeChef -->
+    <article class="project-card" data-tilt>
+      <div class="card-shimmer"></div>
+      <div class="card-glow"></div>
+      <div class="card-visual visual-fridge">
+        <div class="fridge-emoji">🥕🍅🧀</div>
+        <div class="fridge-arrow">→</div>
+        <div class="fridge-emoji">🍝</div>
+      </div>
+      <div class="card-body">
+        <div class="tech-row">
+          <span class="chip">Flutter</span>
+          <span class="chip">Dart</span>
+          <span class="chip">AI</span>
+        </div>
+        <h3 class="card-title">Fridge Chef</h3>
+        <p class="card-desc">
+          A cross-platform mobile app that turns whatever's in your fridge into recipes.
+          Snap or list your ingredients and get creative meal suggestions in seconds.
+        </p>
+        <a class="card-link" href="https://github.com/ShreyasK06/FridgeChef" target="_blank" rel="noopener">
+          View on GitHub
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
+        </a>
+      </div>
+    </article>
+
+    <!-- Camera Whiteboard -->
+    <article class="project-card" data-tilt>
+      <div class="card-shimmer"></div>
+      <div class="card-glow"></div>
+      <div class="card-visual visual-camwb">
+        <div class="camwb-frame"><div class="camwb-hand">✍️</div></div>
+      </div>
+      <div class="card-body">
+        <div class="tech-row">
+          <span class="chip">Python</span>
+          <span class="chip">OpenCV</span>
+        </div>
+        <h3 class="card-title">Camera Whiteboard</h3>
+        <p class="card-desc">
+          Draw in the air with your finger and watch strokes appear on-screen. Tracks
+          fingertips through the webcam with OpenCV to create a natural, marker-free
+          whiteboard experience.
+        </p>
+        <a class="card-link" href="https://github.com/ShreyasK06/cameraWhiteboardPy" target="_blank" rel="noopener">
+          View on GitHub
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
+        </a>
+      </div>
+    </article>
+
+    <!-- License Plate -->
+    <article class="project-card" data-tilt>
+      <div class="card-shimmer"></div>
+      <div class="card-glow"></div>
+      <div class="card-visual visual-plate">
+        <div class="plate">SK-06-CV</div>
+        <div class="plate-scan"></div>
+      </div>
+      <div class="card-body">
+        <div class="tech-row">
+          <span class="chip">Python</span>
+          <span class="chip">OpenCV</span>
+          <span class="chip">OCR</span>
+        </div>
+        <h3 class="card-title">License Plate Recognition</h3>
+        <p class="card-desc">
+          Detects and reads vehicle license plates from images and video streams. Combines
+          contour detection, image preprocessing, and OCR to extract plate numbers reliably.
+        </p>
+        <a class="card-link" href="https://github.com/ShreyasK06/LincensePlateRecogPy" target="_blank" rel="noopener">
+          View on GitHub
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
+        </a>
+      </div>
+    </article>
+
+    <!-- Stock Tips -->
+    <article class="project-card" data-tilt>
+      <div class="card-shimmer"></div>
+      <div class="card-glow"></div>
+      <div class="card-visual visual-tips">
+        <div class="ticker">
+          <span class="up">▲ AAPL +1.2%</span>
+          <span class="down">▼ TSLA −0.8%</span>
+          <span class="up">▲ NVDA +3.4%</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="tech-row">
+          <span class="chip">JavaScript</span>
+          <span class="chip">APIs</span>
+        </div>
+        <h3 class="card-title">Stock Tips</h3>
+        <p class="card-desc">
+          A market analysis dashboard that surfaces daily stock recommendations by pulling
+          live market data and applying a rules-based scoring engine.
+        </p>
+        <a class="card-link" href="https://github.com/shreyask06" target="_blank" rel="noopener">
+          View on GitHub
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
+        </a>
+      </div>
+    </article>
+
+    <!-- Checker AI -->
+    <article class="project-card" data-tilt>
+      <div class="card-shimmer"></div>
+      <div class="card-glow"></div>
+      <div class="card-visual visual-checkers">
+        <div class="checkerboard"></div>
+      </div>
+      <div class="card-body">
+        <div class="tech-row">
+          <span class="chip">Python</span>
+          <span class="chip">Minimax</span>
+          <span class="chip">AI</span>
+        </div>
+        <h3 class="card-title">Checker AI</h3>
+        <p class="card-desc">
+          A Checkers-playing AI powered by the Minimax algorithm with alpha-beta pruning.
+          Evaluates thousands of positions per move to play at a strong tactical level.
+        </p>
+        <a class="card-link" href="https://github.com/ShreyasK06/checkerAiPy" target="_blank" rel="noopener">
+          View on GitHub
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
+        </a>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- Skills -->
+<section id="skills" class="section">
+  <div class="section-head">
+    <div class="eyebrow">02 — Toolbox</div>
+    <h2 class="section-title">Skills & Tech</h2>
+    <p class="section-sub">The stack I reach for when building.</p>
+  </div>
+  <div class="skills-grid">
+    <div class="skill-group">
+      <h4>Languages</h4>
+      <div class="skill-chips">
+        <span class="chip lg spring">Python</span>
+        <span class="chip lg spring">JavaScript</span>
+        <span class="chip lg spring">TypeScript</span>
+        <span class="chip lg spring">Java</span>
+        <span class="chip lg spring">Dart</span>
+        <span class="chip lg spring">R</span>
+        <span class="chip lg spring">HTML/CSS</span>
+      </div>
+    </div>
+    <div class="skill-group">
+      <h4>ML & Data</h4>
+      <div class="skill-chips">
+        <span class="chip lg spring">PyTorch</span>
+        <span class="chip lg spring">LightGBM</span>
+        <span class="chip lg spring">OpenCV</span>
+        <span class="chip lg spring">MediaPipe</span>
+        <span class="chip lg spring">Pandas</span>
+        <span class="chip lg spring">NumPy</span>
+        <span class="chip lg spring">scikit-learn</span>
+      </div>
+    </div>
+    <div class="skill-group">
+      <h4>Web & Mobile</h4>
+      <div class="skill-chips">
+        <span class="chip lg spring">React</span>
+        <span class="chip lg spring">Node.js</span>
+        <span class="chip lg spring">Flask</span>
+        <span class="chip lg spring">Flutter</span>
+        <span class="chip lg spring">REST APIs</span>
+      </div>
+    </div>
+    <div class="skill-group">
+      <h4>Tools</h4>
+      <div class="skill-chips">
+        <span class="chip lg spring">Git</span>
+        <span class="chip lg spring">Docker</span>
+        <span class="chip lg spring">Render</span>
+        <span class="chip lg spring">Linux</span>
+        <span class="chip lg spring">GitHub Actions</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- About -->
+<section id="about" class="section">
+  <div class="section-head">
+    <div class="eyebrow">03 — About</div>
+    <h2 class="section-title">A bit about me</h2>
+  </div>
+  <div class="about-wrap">
+    <div class="about-copy">
+      <p>
+        I'm a software engineer and ML researcher who loves shipping things that feel
+        alive — tools that see, think, or collaborate. My work spans computer vision,
+        machine learning, full-stack web, and mobile.
+      </p>
+      <p>
+        Right now I'm doing summer research on machine learning models for milling
+        surface-quality prediction, alongside building side projects like MathBoard
+        (a collaborative math whiteboard) and Delphi (a personal-finance coach).
+      </p>
+      <p>
+        Outside of code: chess, guitar, and finding excuses to draw diagrams on
+        whiteboards (which is how MathBoard started).
+      </p>
+    </div>
+    <div class="about-side">
+      <div class="terminal-card">
+        <div class="term-head">
+          <span></span><span></span><span></span>
+          <span class="term-title">~/shreyas</span>
+        </div>
+        <pre class="term-body"><span class="prompt">$</span> whoami
+<span class="out">shreyas kakkar</span>
+<span class="prompt">$</span> cat focus.txt
+<span class="out">ML · CV · Interactive tools</span>
+<span class="prompt">$</span> ls current/
+<span class="out">mathboard/  delphi/  research/</span>
+<span class="prompt">$</span> <span class="cursor">▍</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Contact -->
+<section id="contact" class="section contact">
+  <div class="section-head">
+    <div class="eyebrow">04 — Get in touch</div>
+    <h2 class="section-title">Let's build something.</h2>
+    <p class="section-sub">Open to internships, research, and collaborations.</p>
+  </div>
+  <div class="contact-links">
+    <a href="mailto:shreyaskakkar@gmail.com" class="contact-card">
+      <div class="cc-icon">✉</div>
+      <div class="cc-body">
+        <div class="cc-label">Email</div>
+        <div class="cc-value">shreyaskakkar@gmail.com</div>
+      </div>
+    </a>
+    <a href="https://github.com/shreyask06" target="_blank" rel="noopener" class="contact-card">
+      <div class="cc-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2c-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.51-1.47.11-3.06 0 0 .97-.31 3.18 1.18a11 11 0 016.79.65C18.28 3.9 19.25 4.2 19.25 4.2c.62 1.59.23 2.77.11 3.06.74.81 1.19 1.84 1.19 3.1 0 4.43-2.69 5.4-5.25 5.69.41.35.77 1.05.77 2.12v3.14c0 .31.21.68.79.56A11.5 11.5 0 0023.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+      </div>
+      <div class="cc-body">
+        <div class="cc-label">GitHub</div>
+        <div class="cc-value">@shreyask06</div>
+      </div>
+    </a>
+    <a href="https://shreyask06.github.io/MyWebsite" target="_blank" rel="noopener" class="contact-card">
+      <div class="cc-icon">🌐</div>
+      <div class="cc-body">
+        <div class="cc-label">Legacy site</div>
+        <div class="cc-value">shreyask06.github.io</div>
+      </div>
+    </a>
+  </div>
+</section>
+
+<footer class="footer">
+  <div>© <span id="year"></span> Shreyas Kakkar. Built with care.</div>
+  <div class="foot-right">Designed & coded from scratch.</div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

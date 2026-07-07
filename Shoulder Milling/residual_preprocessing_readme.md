@@ -4,14 +4,28 @@
 
 All earlier experiments — baseline classical, CNN pipelines A/D, feedopt scalograms, cascade conditioning, and the leave-one-side-out CV — shared a common failure mode: **the scalogram signal is dominated by the machining condition (speed × depth-of-cut), not the target parameter being classified.**
 
+### Visual proof: condition dominance
+
+The figure below shows the **same feed rate (f3)** across all 8 experimental sides (conditions). Each side is a unique speed × depth-of-cut combination. Despite feed being fixed, the scalogram patterns change dramatically — the classifier sees 8 visually different images for a single feed class.
+
+![Fig 1 — Condition dominance: same feed, 8 conditions](readme_figures/fig1_condition_dominance.png)
+
+By contrast, the figure below shows **all three feed rates (f3/f5/f7) within the same condition** (side 1: 2500 rpm, doc1). The differences between feeds are subtle — far smaller than the between-condition variation shown above.
+
+![Fig 2 — Feed variation within one condition](readme_figures/fig2_feed_within_condition.png)
+
 Quantifying this from the raw data:
 - The standard deviation of per-condition scalogram means (across 8 speed×doc conditions) is **0.94** in normalised units
 - The feed signal within a condition (std of f3/f5/f7 means) is only **0.02–0.09**
 - The condition effect is therefore **~10–45× larger** than the feed signal
 
-The consequence: the `(f7 − f3)` delta vector — the purest available feed signal — has a **mean cross-condition correlation of −0.05**, ranging as low as **−0.89**. The direction of the feed signal in scalogram space *literally reverses* between some conditions. No classifier can learn a consistent rule from this; it instead learns to recognise the dominant condition and predicts whichever feed class happens to be most common in training examples from that condition.
+### The feed signal reverses direction across conditions
 
-This is why the leave-one-side-out CV showed every test fold collapsing to a single feed prediction (e.g. `[f3 f3 f3]` or `[f7 f7 f7]`) regardless of true feed, and why honest unbiased accuracy sat at **42–54%** for feed — barely above the 33% random baseline.
+The figure below shows the Pearson correlation of the `(f7 − f3)` feed-delta vector between every pair of sides. **Blue cells are negative** — meaning the direction of the feed signal in scalogram space is literally opposite between those two conditions. A classifier trained on some conditions and tested on others cannot learn a consistent rule.
+
+![Fig 4 — Cross-condition correlation of feed-delta vector](readme_figures/fig4_delta_correlation.png)
+
+The mean off-diagonal correlation is near zero (≈ 0.16 on this feedopt scalogram set; the earlier analysis on raw scalograms yielded −0.05 with a minimum of −0.89). This is why the leave-one-side-out CV showed every test fold collapsing to a single feed prediction (e.g. `[f3 f3 f3]` or `[f7 f7 f7]`) regardless of true feed, and why honest unbiased accuracy sat at **42–54%** for feed — barely above the 33% random baseline.
 
 The cascade conditioning approach (speed → doc → feed) was the right intuition, but it failed in unbiased evaluation for the same reason: the condition signal is so large that even perfect upstream speed/doc labels (oracle conditioning in `cv_exp_splits.py`) could not rescue feed accuracy consistently.
 
@@ -20,6 +34,12 @@ The cascade conditioning approach (speed → doc → feed) was the right intuiti
 ## What Condition-Residual Preprocessing Does
 
 For each scalogram image, subtract the mean of all images that share the same **nuisance condition** — i.e., everything that is *not* the classification target. This removes the condition DC offset and leaves only target-relative variation.
+
+### Step-by-step example
+
+The figure below shows the full subtraction process for side 1 (2500 rpm, doc1), window 1. The top row shows the raw scalograms for f3, f5, f7 alongside their per-condition mean. The bottom row shows the residuals after subtraction — the dominant condition structure has been removed and a clear **f3 → f5 → f7 gradient** becomes visible (blue = below mean, red = above mean).
+
+![Fig 3 — Subtraction walkthrough](readme_figures/fig3_subtraction_walkthrough.png)
 
 ### Grouping by target
 
