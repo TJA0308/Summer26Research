@@ -1,15 +1,15 @@
 ### efficientnet_b0_lr0.0001_smote_best  |  target=roughness  |  scalogram=scalograms_32x3  |  arch=efficientnet_b0
 
-| Run | True | w1 | w2 | w3 | MV | ✓/✗ |
+| Run | True | a | b | c | MV | ✓/✗ |
 |-----|------|----|----|----|-----|-----|
-| 1a | smooth | smooth | smooth | smooth | smooth | ✓ |
-| 2b | rough | smooth | smooth | rough | smooth | ✗ |
-| 3a | rough | smooth | smooth | smooth | smooth | ✗ |
-| 4b | rough | rough | rough | rough | rough | ✓ |
-| 5a | smooth | smooth | smooth | smooth | smooth | ✓ |
-| 6b | smooth | smooth | smooth | rough | smooth | ✓ |
-| 7a | smooth | smooth | rough | smooth | smooth | ✓ |
-| 8b | rough | rough | rough | rough | rough | ✓ |
+| s25f3y5z25 | smooth | smooth | smooth | smooth | smooth | ✓ |
+| s35f5y5z25 | rough | smooth | smooth | rough | smooth | ✗ |
+| s25f3y25z25 | rough | smooth | smooth | smooth | smooth | ✗ |
+| s35f5y25z25 | rough | rough | rough | rough | rough | ✓ |
+| s25f3y5z125 | smooth | smooth | smooth | smooth | smooth | ✓ |
+| s35f5y5z125 | smooth | smooth | smooth | rough | smooth | ✓ |
+| s25f3y25z125 | smooth | smooth | rough | smooth | smooth | ✓ |
+| s35f5y25z125 | rough | rough | rough | rough | rough | ✓ |
 
 Window accuracy: **70.8%** (17/24)
 Run MV accuracy: **75.0%** (6/8)

@@ -238,7 +238,7 @@ tells us:
 PCA is **unsupervised** — it does not know about the Ra label.  This is both a
 strength (no overfitting to label noise) and a weakness (it cannot preferentially
 surface Ra-related variation).
-
+  
 ### Results
 
 **Dimensionality (Plot 1):**  

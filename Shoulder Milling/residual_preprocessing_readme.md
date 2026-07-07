@@ -173,9 +173,31 @@ Residual preprocessing, also evaluated under leave-one-side-out CV, recovers 87.
 
 ---
 
-## Most Reliable Model Configurations
+## Final Decision: Residual Only for Feed and Roughness
 
-Based on results across all splits and both scalogram sizes:
+**Speed and doc use raw (non-residual) models.** Both are already reliably solvable
+without residual preprocessing — see `exp11_exp12_results_readme.md` for the
+raw sweep numbers — and residual would be extra pipeline complexity for no
+accuracy gain on those two targets:
+
+| Target | Final model | Scalogram | Notes |
+|--------|-------------|-----------|-------|
+| **speed** | resnet18, lr=1e-3, no SMOTE | `scalograms_32x12` (or `32x12_9win`) | 100%/100% on exp11/exp12, raw pixels |
+| **doc** | resnet18, lr=1e-3, no SMOTE | `scalograms_32x3_9win` | 75%/75% on exp11/exp12, raw pixels |
+
+**Feed and roughness keep condition-residual preprocessing.** Both share the
+same nuisance condition (speed × doc — see the grouping table above), so it
+would be inconsistent to residual-correct one but not the other: they're
+stripping the identical dominant axis out of the same underlying scalograms.
+
+| Target | Final model | Scalogram dir | Notes |
+|--------|-------------|---------------|-------|
+| **feed** | resnet18, lr=1e-3, SMOTE | `32x3_feedopt_residual` | 100% (base, exp11, exp12) CNN sweep; 87.5% under leave-one-side-out CV |
+| **roughness** | efficientnet_b0, lr=1e-4 | `32x3_residual_roughness` | 100% base+exp12, 87.5% exp11 |
+
+## Most Reliable Model Configurations (superseded by the table above for speed/doc)
+
+Full sweep results across all splits and both scalogram sizes, kept for reference:
 
 | Target | Scalogram dir | Backbone | LR | SMOTE | Best split acc |
 |--------|--------------|----------|----|-------|---------------|

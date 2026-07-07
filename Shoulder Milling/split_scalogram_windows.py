@@ -14,10 +14,11 @@ narrower-bandwidth samples that still share the parent window's label.
 Reads any of the 4 existing scalogram dirs (scalograms_32x12,
 scalograms_32x3, scalograms_32x12_feedopt, scalograms_32x3_feedopt) and
 writes a sibling "<dir>_9win" directory with the same labels.csv schema
-(filename, sample_id, run, window, side, feed, ra, ra_class). Windows are
-relabelled w1..w9 per run, in parent-window order (original w1 -> w1-w3,
-w2 -> w4-w6, w3 -> w7-w9), so existing run-level majority-vote grouping
-(by the numeric "run" column) and per-run reporting work unmodified.
+(filename, sample_id, run_id, window, run, side, feed, ra, ra_class).
+Each original window letter (a/b/c) gets an additional _1/_2/_3 suffix
+for its 3 sub-windows (e.g. window "a" -> "a_1", "a_2", "a_3"), so
+existing run-level majority-vote grouping (by the "run_id" column) and
+per-run reporting work unmodified.
 
 Usage:
     python split_scalogram_windows.py
@@ -45,18 +46,17 @@ def split_one(img_dir: Path, out_dir: Path):
     rows = []
     for _, row in df.iterrows():
         img = np.array(Image.open(img_dir / row["filename"]))
-        orig_win_num = int(str(row["window"])[1:])  # "w1" -> 1
         blocks = np.array_split(img, 3, axis=0)
         for sub_i, block in enumerate(blocks, start=1):
-            new_win_num = (orig_win_num - 1) * 3 + sub_i
             stem  = Path(row["filename"]).stem
             fname = f"{stem}_{sub_i}.png"
             Image.fromarray(block).save(out_dir / fname)
             rows.append({
                 "filename":  fname,
                 "sample_id": f"{row['sample_id']}_{sub_i}",
+                "run_id":    row["run_id"],
+                "window":    f"{row['window']}_{sub_i}",
                 "run":       row["run"],
-                "window":    f"w{new_win_num}",
                 "side":      row["side"],
                 "feed":      row["feed"],
                 "ra":        row["ra"],
