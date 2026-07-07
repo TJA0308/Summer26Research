@@ -187,7 +187,11 @@ def eval_one(model_path, target, img_dir, arch, device=None, save_md=None, verbo
             hist = json.load(f)
     if dropout is None:
         dropout = hist.get("dropout", 0.0)
-    cond_parents = hist.get("cond_parents", [])
+    # Only treat as conditioned if conditioning was actually active during training.
+    # cond_parents is saved as the configured list even when conditioning was skipped
+    # (e.g. prediction CSVs were missing), so gate on the `conditioned` flag.
+    _cond_parents_cfg = hist.get("cond_parents", [])
+    cond_parents = _cond_parents_cfg if hist.get("conditioned", bool(_cond_parents_cfg)) else []
 
     _, val_tf = build_transforms()
     run_windows, run_label = load_test_windows(img_dir, target, split_id)

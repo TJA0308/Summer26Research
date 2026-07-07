@@ -36,6 +36,7 @@ import pandas as pd
 from PIL import Image
 
 from build_option_c_scalograms import load_all_sheets, ra_class
+from cnn_train_param import COND_FROM_SIDE_FEED
 
 CWT_COLS = [2, 3]   # 64mexican, 64coif
 
@@ -64,11 +65,12 @@ def main():
 
     rows = []
     for i, rec in enumerate(records):
-        sid   = f"{rec['run_id']}_{rec['window']}"
+        run_id = COND_FROM_SIDE_FEED[(int(rec["side"]), rec["feed"])]
+        sid   = f"{run_id}_{rec['window']}"
         fname = f"{sid}.png"
         Image.fromarray(imgs_u8[i]).save(OUT_DIR / fname)
         rows.append({
-            "filename": fname, "sample_id": sid, "run_id": rec["run_id"],
+            "filename": fname, "sample_id": sid, "run_id": run_id,
             "window": rec["window"], "run": rec["run"], "side": rec["side"],
             "feed": rec["feed"], "ra": rec["ra"], "ra_class": ra_class(rec["ra"]),
         })

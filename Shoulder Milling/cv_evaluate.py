@@ -54,7 +54,7 @@ from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
-from cnn_train_param import AddGaussianNoise, FEED_TO_CLASS, TARGETS, seed_everything
+from cnn_train_param import AddGaussianNoise, FEED_TO_CLASS, TARGETS, COND_FROM_SIDE_FEED, seed_everything
 
 ROOT = Path(__file__).parent
 FEED_CLASSES = TARGETS["feed"]["num_classes"]
@@ -150,6 +150,40 @@ def predict_hgb(train_paths, train_labels, test_paths, seed):
     return pipe.predict_proba(Xte)
 
 
+def predict_residual_hgb(train_paths, train_labels, train_sides, test_paths, seed):
+    """
+    Condition-prototype subtraction HGB.
+
+    Training: for each window subtract the mean of all windows from the same
+    side (i.e. the same speed×doc condition). This removes the per-condition
+    DC offset so the classifier only sees feed-relative signal.
+
+    Test: subtract the mean of ALL test windows for this fold (which are
+    exactly the 3 feeds for one held-out side) before classifying. No labels
+    are needed to compute this mean -- it is purely unsupervised.
+    """
+    Xtr_raw = load_pixels(train_paths)
+    Xte_raw = load_pixels(test_paths)
+
+    # subtract per-side mean from training windows
+    Xtr = np.empty_like(Xtr_raw)
+    for side in np.unique(train_sides):
+        mask = train_sides == side
+        Xtr[mask] = Xtr_raw[mask] - Xtr_raw[mask].mean(axis=0)
+
+    # subtract test-fold mean (unsupervised -- no labels used)
+    Xte = Xte_raw - Xte_raw.mean(axis=0)
+
+    n_components = min(20, Xtr.shape[0] - 1)
+    pipe = Pipeline([
+        ("scale", StandardScaler()),
+        ("pca", PCA(n_components=n_components, random_state=seed)),
+        ("clf", HistGradientBoostingClassifier(max_iter=150, random_state=seed)),
+    ])
+    pipe.fit(Xtr, train_labels)
+    return pipe.predict_proba(Xte)
+
+
 # ── voting + fold loop ──────────────────────────────────────────────────────────
 def vote(probs, labels, run_ids):
     """Returns (window_acc, run_acc_hard, run_acc_soft) from per-window softmax probs."""
@@ -175,21 +209,25 @@ def vote(probs, labels, run_ids):
 def run_cv(img_dir: Path, model_name: str, seed: int, epochs: int, batch: int, lr: float,
            noise_std: float, device):
     df = pd.read_csv(img_dir / "labels.csv")
-    df["label"] = df["feed"].map(FEED_TO_CLASS)
+    df["label"]  = df["feed"].map(FEED_TO_CLASS)
+    df["run_id"] = df.apply(lambda r: COND_FROM_SIDE_FEED[(int(r["side"]), r["feed"])], axis=1)
     sides = sorted(df["side"].unique())
 
     all_probs, all_labels, all_runs = [], [], []
     for side in sides:
         test_df  = df[df["side"] == side].reset_index(drop=True)
         train_df = df[df["side"] != side].reset_index(drop=True)
-        train_paths = [img_dir / fn for fn in train_df["filename"]]
-        test_paths  = [img_dir / fn for fn in test_df["filename"]]
+        train_paths  = [img_dir / fn for fn in train_df["filename"]]
+        test_paths   = [img_dir / fn for fn in test_df["filename"]]
         train_labels = train_df["label"].to_numpy()
+        train_sides  = train_df["side"].to_numpy()
         test_labels  = test_df["label"].to_numpy()
         test_runs    = test_df["run_id"].tolist()
 
         if model_name == "hgb":
             probs = predict_hgb(train_paths, train_labels, test_paths, seed)
+        elif model_name == "residual_hgb":
+            probs = predict_residual_hgb(train_paths, train_labels, train_sides, test_paths, seed)
         elif model_name == "tiny_cnn":
             model, val_tf = train_tiny_cnn(train_paths, train_labels, epochs, batch, lr,
                                             noise_std, seed, device)
@@ -211,7 +249,7 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--img_dir", default="scalograms_32x3_feedopt")
     parser.add_argument("--models", nargs="+", default=["hgb", "tiny_cnn"],
-                        choices=["hgb", "tiny_cnn"])
+                        choices=["hgb", "tiny_cnn", "residual_hgb"])
     parser.add_argument("--seeds", type=int, nargs="+", default=[42])
     parser.add_argument("--epochs", type=int, default=30, help="tiny_cnn only")
     parser.add_argument("--batch", type=int, default=8, help="tiny_cnn only")
