@@ -1,5 +1,3 @@
-// ---------- Year ----------
-document.getElementById('year').textContent = new Date().getFullYear();
 
 // ---------- Loading screen ----------
 window.addEventListener('load', () => {
@@ -220,7 +218,9 @@ document.querySelectorAll('.contact-card').forEach((c, i) => {
   c.style.transitionDelay = `${i * 80}ms`;
 });
 
-// ---------- 3D flip-in for project cards ----------
+// ---------- Materialise-in for project cards (wave stagger) ----------
+const cards = Array.from(document.querySelectorAll('.project-card'));
+// Wave stagger: cards closer to viewport centre appear first
 const cardObserver = new IntersectionObserver((entries) => {
   entries.forEach(e => {
     if (!e.isIntersecting) return;
@@ -228,9 +228,12 @@ const cardObserver = new IntersectionObserver((entries) => {
     setTimeout(() => e.target.classList.add('flipped'), delay);
     cardObserver.unobserve(e.target);
   });
-}, { threshold: 0.15 });
-document.querySelectorAll('.project-card').forEach((c, i) => {
-  c.dataset.flipDelay = i * 120;
+}, { threshold: 0.12 });
+cards.forEach((c, i) => {
+  // stagger by row position so pairs appear together, wave across grid
+  const col = i % 2;        // 0 = left col, 1 = right col
+  const row = Math.floor(i / 2);
+  c.dataset.flipDelay = row * 110 + col * 55;
   cardObserver.observe(c);
 });
 
