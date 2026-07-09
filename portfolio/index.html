@@ -108,7 +108,7 @@
   <div class="projects-grid">
 
     <!-- MathBoard - featured -->
-    <article class="project-card featured" data-tilt>
+    <article class="project-card featured">
       <div class="card-badge">Featured</div>
       <div class="card-visual">
         <div class="visual-mathboard">
@@ -121,115 +121,68 @@
         </div>
       </div>
       <div class="card-body">
-        <div class="tech-row">
-          <span class="chip">React</span>
-          <span class="chip">Python</span>
-          <span class="chip">Flask</span>
-          <span class="chip">R</span>
-          <span class="chip">Render</span>
-        </div>
         <h3 class="card-title">MathBoard</h3>
-        <p class="card-desc">
-          A collaborative digital whiteboard purpose-built for mathematics. Combines a React
-          frontend with a Python/R backend for equation rendering, symbolic computation, and
-          real-time drawing — making it easy to visualize, teach, and explore math live.
-        </p>
-        <a class="card-link" href="https://github.com/ShreyasK06/MathBoard" target="_blank" rel="noopener">
-          View on GitHub
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
-        </a>
+        <div class="card-reveal"><div class="card-reveal-inner">
+          <div class="tech-row">
+            <span class="chip">React</span><span class="chip">Python</span><span class="chip">Flask</span><span class="chip">R</span><span class="chip">Render</span>
+          </div>
+          <p class="card-desc">A collaborative digital whiteboard purpose-built for mathematics. Combines a React frontend with a Python/R backend for equation rendering, symbolic computation, and real-time drawing.</p>
+          <a class="card-link" href="https://github.com/ShreyasK06/MathBoard" target="_blank" rel="noopener">View on GitHub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+        </div></div>
       </div>
     </article>
 
     <!-- Chess -->
-    <article class="project-card" data-tilt>
-      <div class="card-visual visual-chess">
-        <div class="chessboard"></div>
-      </div>
+    <article class="project-card">
+      <div class="card-visual visual-chess"><div class="chessboard"></div></div>
       <div class="card-body">
-        <div class="tech-row">
-          <span class="chip">JavaScript</span>
-          <span class="chip">Node.js</span>
-        </div>
         <h3 class="card-title">Chess Game</h3>
-        <p class="card-desc">
-          A fully-playable chess engine with move validation, check/checkmate detection, and
-          a clean interactive UI. Built from scratch in JavaScript with a Node.js backend for
-          multiplayer capability.
-        </p>
-        <a class="card-link" href="https://github.com/ShreyasK06/ChessNodeJS" target="_blank" rel="noopener">
-          View on GitHub
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
-        </a>
+        <div class="card-reveal"><div class="card-reveal-inner">
+          <div class="tech-row"><span class="chip">JavaScript</span><span class="chip">Node.js</span></div>
+          <p class="card-desc">A fully-playable chess engine with move validation, check/checkmate detection, and a clean interactive UI built from scratch with a Node.js multiplayer backend.</p>
+          <a class="card-link" href="https://github.com/ShreyasK06/ChessNodeJS" target="_blank" rel="noopener">View on GitHub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+        </div></div>
       </div>
     </article>
 
     <!-- Sentiment Stock -->
-    <article class="project-card" data-tilt>
+    <article class="project-card">
       <div class="card-visual visual-stock">
         <svg viewBox="0 0 200 100" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="stockGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#7dd3fc" stop-opacity="0.6"/>
-              <stop offset="100%" stop-color="#7dd3fc" stop-opacity="0"/>
-            </linearGradient>
-          </defs>
+          <defs><linearGradient id="stockGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7dd3fc" stop-opacity="0.6"/><stop offset="100%" stop-color="#7dd3fc" stop-opacity="0"/></linearGradient></defs>
           <path class="stock-fill" d="M0,80 L20,70 L40,75 L60,50 L80,55 L100,35 L120,40 L140,25 L160,30 L180,15 L200,20 L200,100 L0,100 Z" fill="url(#stockGrad)"/>
           <path class="stock-line" d="M0,80 L20,70 L40,75 L60,50 L80,55 L100,35 L120,40 L140,25 L160,30 L180,15 L200,20" fill="none" stroke="#7dd3fc" stroke-width="1.5"/>
         </svg>
         <div class="stock-badge">60% acc.</div>
       </div>
       <div class="card-body">
-        <div class="tech-row">
-          <span class="chip">Python</span>
-          <span class="chip">LightGBM</span>
-          <span class="chip">NLP</span>
-          <span class="chip">Pandas</span>
-        </div>
         <h3 class="card-title">Sentiment Stock Analysis</h3>
-        <p class="card-desc">
-          A LightGBM classifier that fuses news/social sentiment signals with statistical
-          market features to predict short-term price direction. Achieves ~60% accuracy on
-          held-out test data — significantly above a coin-flip baseline.
-        </p>
-        <a class="card-link" href="https://github.com/shreyask06" target="_blank" rel="noopener">
-          View on GitHub
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
-        </a>
+        <div class="card-reveal"><div class="card-reveal-inner">
+          <div class="tech-row"><span class="chip">Python</span><span class="chip">LightGBM</span><span class="chip">NLP</span><span class="chip">Pandas</span></div>
+          <p class="card-desc">A LightGBM classifier fusing news/social sentiment with statistical market features to predict short-term price direction — ~60% accuracy on held-out data.</p>
+          <a class="card-link" href="https://github.com/shreyask06" target="_blank" rel="noopener">View on GitHub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+        </div></div>
       </div>
     </article>
 
     <!-- RPS CV -->
-    <article class="project-card" data-tilt>
+    <article class="project-card">
       <div class="card-visual visual-rps">
-        <div class="rps-icons">
-          <div class="rps-icon">✊</div>
-          <div class="rps-icon">✋</div>
-          <div class="rps-icon">✌️</div>
-        </div>
+        <div class="rps-icons"><div class="rps-icon">✊</div><div class="rps-icon">✋</div><div class="rps-icon">✌️</div></div>
         <div class="rps-scanline"></div>
       </div>
       <div class="card-body">
-        <div class="tech-row">
-          <span class="chip">Python</span>
-          <span class="chip">OpenCV</span>
-          <span class="chip">MediaPipe</span>
-        </div>
         <h3 class="card-title">Rock Paper Scissors CV</h3>
-        <p class="card-desc">
-          Real-time Rock Paper Scissors played through your webcam. OpenCV + hand-landmark
-          detection recognizes gestures, and an AI mode brings a smart opponent that adapts
-          to your play patterns.
-        </p>
-        <a class="card-link" href="https://github.com/shreyask06" target="_blank" rel="noopener">
-          View on GitHub
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
-        </a>
+        <div class="card-reveal"><div class="card-reveal-inner">
+          <div class="tech-row"><span class="chip">Python</span><span class="chip">OpenCV</span><span class="chip">MediaPipe</span></div>
+          <p class="card-desc">Real-time Rock Paper Scissors through your webcam. Hand-landmark detection recognizes gestures, with an AI opponent that adapts to your play patterns.</p>
+          <a class="card-link" href="https://github.com/shreyask06" target="_blank" rel="noopener">View on GitHub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+        </div></div>
       </div>
     </article>
 
     <!-- Delphi -->
-    <article class="project-card" data-tilt>
+    <article class="project-card">
       <div class="card-visual visual-delphi">
         <div class="delphi-chat">
           <div class="chat-bubble user">How much can I save this month?</div>
@@ -237,98 +190,63 @@
         </div>
       </div>
       <div class="card-body">
-        <div class="tech-row">
-          <span class="chip">Python</span>
-          <span class="chip">LLM</span>
-          <span class="chip">Finance</span>
-        </div>
         <h3 class="card-title">Delphi</h3>
-        <p class="card-desc">
-          A personal finance coach that ingests transaction data and delivers actionable,
-          personalized guidance on budgeting, saving, and investment habits — conversational
-          and context-aware.
-        </p>
-        <a class="card-link" href="https://github.com/shreyask06" target="_blank" rel="noopener">
-          View on GitHub
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
-        </a>
+        <div class="card-reveal"><div class="card-reveal-inner">
+          <div class="tech-row"><span class="chip">Python</span><span class="chip">LLM</span><span class="chip">Finance</span></div>
+          <p class="card-desc">A personal finance coach that ingests transaction data and delivers actionable, personalized budgeting and investment guidance — conversational and context-aware.</p>
+          <a class="card-link" href="https://github.com/shreyask06" target="_blank" rel="noopener">View on GitHub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+        </div></div>
       </div>
     </article>
 
     <!-- FridgeChef -->
-    <article class="project-card" data-tilt>
+    <article class="project-card">
       <div class="card-visual visual-fridge">
         <div class="fridge-emoji">🥕🍅🧀</div>
         <div class="fridge-arrow">→</div>
         <div class="fridge-emoji">🍝</div>
       </div>
       <div class="card-body">
-        <div class="tech-row">
-          <span class="chip">Flutter</span>
-          <span class="chip">Dart</span>
-          <span class="chip">AI</span>
-        </div>
         <h3 class="card-title">Fridge Chef</h3>
-        <p class="card-desc">
-          A cross-platform mobile app that turns whatever's in your fridge into recipes.
-          Snap or list your ingredients and get creative meal suggestions in seconds.
-        </p>
-        <a class="card-link" href="https://github.com/ShreyasK06/FridgeChef" target="_blank" rel="noopener">
-          View on GitHub
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
-        </a>
+        <div class="card-reveal"><div class="card-reveal-inner">
+          <div class="tech-row"><span class="chip">Flutter</span><span class="chip">Dart</span><span class="chip">AI</span></div>
+          <p class="card-desc">A cross-platform mobile app that turns whatever's in your fridge into recipes. Snap or list ingredients and get creative meal suggestions in seconds.</p>
+          <a class="card-link" href="https://github.com/ShreyasK06/FridgeChef" target="_blank" rel="noopener">View on GitHub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+        </div></div>
       </div>
     </article>
 
     <!-- Camera Whiteboard -->
-    <article class="project-card" data-tilt>
-      <div class="card-visual visual-camwb">
-        <div class="camwb-frame"><div class="camwb-hand">✍️</div></div>
-      </div>
+    <article class="project-card">
+      <div class="card-visual visual-camwb"><div class="camwb-frame"><div class="camwb-hand">✍️</div></div></div>
       <div class="card-body">
-        <div class="tech-row">
-          <span class="chip">Python</span>
-          <span class="chip">OpenCV</span>
-        </div>
         <h3 class="card-title">Camera Whiteboard</h3>
-        <p class="card-desc">
-          Draw in the air with your finger and watch strokes appear on-screen. Tracks
-          fingertips through the webcam with OpenCV to create a natural, marker-free
-          whiteboard experience.
-        </p>
-        <a class="card-link" href="https://github.com/ShreyasK06/cameraWhiteboardPy" target="_blank" rel="noopener">
-          View on GitHub
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
-        </a>
+        <div class="card-reveal"><div class="card-reveal-inner">
+          <div class="tech-row"><span class="chip">Python</span><span class="chip">OpenCV</span></div>
+          <p class="card-desc">Draw in the air with your finger and watch strokes appear on-screen. Tracks fingertips through the webcam for a natural, marker-free whiteboard experience.</p>
+          <a class="card-link" href="https://github.com/ShreyasK06/cameraWhiteboardPy" target="_blank" rel="noopener">View on GitHub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+        </div></div>
       </div>
     </article>
 
     <!-- License Plate -->
-    <article class="project-card" data-tilt>
+    <article class="project-card">
       <div class="card-visual visual-plate">
         <div class="plate">SK-06-CV</div>
         <div class="plate-scan"></div>
       </div>
       <div class="card-body">
-        <div class="tech-row">
-          <span class="chip">Python</span>
-          <span class="chip">OpenCV</span>
-          <span class="chip">OCR</span>
-        </div>
         <h3 class="card-title">License Plate Recognition</h3>
-        <p class="card-desc">
-          Detects and reads vehicle license plates from images and video streams. Combines
-          contour detection, image preprocessing, and OCR to extract plate numbers reliably.
-        </p>
-        <a class="card-link" href="https://github.com/ShreyasK06/LincensePlateRecogPy" target="_blank" rel="noopener">
-          View on GitHub
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
-        </a>
+        <div class="card-reveal"><div class="card-reveal-inner">
+          <div class="tech-row"><span class="chip">Python</span><span class="chip">OpenCV</span><span class="chip">OCR</span></div>
+          <p class="card-desc">Detects and reads vehicle license plates from images and video streams using contour detection, image preprocessing, and OCR.</p>
+          <a class="card-link" href="https://github.com/ShreyasK06/LincensePlateRecogPy" target="_blank" rel="noopener">View on GitHub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+        </div></div>
       </div>
     </article>
 
     <!-- Stock Tips -->
-    <article class="project-card" data-tilt>
+    <article class="project-card">
       <div class="card-visual visual-tips">
         <div class="ticker">
           <span class="up">▲ AAPL +1.2%</span>
@@ -337,42 +255,25 @@
         </div>
       </div>
       <div class="card-body">
-        <div class="tech-row">
-          <span class="chip">JavaScript</span>
-          <span class="chip">APIs</span>
-        </div>
         <h3 class="card-title">Stock Tips</h3>
-        <p class="card-desc">
-          A market analysis dashboard that surfaces daily stock recommendations by pulling
-          live market data and applying a rules-based scoring engine.
-        </p>
-        <a class="card-link" href="https://github.com/shreyask06" target="_blank" rel="noopener">
-          View on GitHub
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
-        </a>
+        <div class="card-reveal"><div class="card-reveal-inner">
+          <div class="tech-row"><span class="chip">JavaScript</span><span class="chip">APIs</span></div>
+          <p class="card-desc">A market analysis dashboard surfacing daily stock recommendations by pulling live market data through a rules-based scoring engine.</p>
+          <a class="card-link" href="https://github.com/shreyask06" target="_blank" rel="noopener">View on GitHub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+        </div></div>
       </div>
     </article>
 
     <!-- Checker AI -->
-    <article class="project-card" data-tilt>
-      <div class="card-visual visual-checkers">
-        <div class="checkerboard"></div>
-      </div>
+    <article class="project-card">
+      <div class="card-visual visual-checkers"><div class="checkerboard"></div></div>
       <div class="card-body">
-        <div class="tech-row">
-          <span class="chip">Python</span>
-          <span class="chip">Minimax</span>
-          <span class="chip">AI</span>
-        </div>
         <h3 class="card-title">Checker AI</h3>
-        <p class="card-desc">
-          A Checkers-playing AI powered by the Minimax algorithm with alpha-beta pruning.
-          Evaluates thousands of positions per move to play at a strong tactical level.
-        </p>
-        <a class="card-link" href="https://github.com/ShreyasK06/checkerAiPy" target="_blank" rel="noopener">
-          View on GitHub
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>
-        </a>
+        <div class="card-reveal"><div class="card-reveal-inner">
+          <div class="tech-row"><span class="chip">Python</span><span class="chip">Minimax</span><span class="chip">AI</span></div>
+          <p class="card-desc">A Checkers-playing AI powered by Minimax with alpha-beta pruning. Evaluates thousands of positions per move to play at a strong tactical level.</p>
+          <a class="card-link" href="https://github.com/ShreyasK06/checkerAiPy" target="_blank" rel="noopener">View on GitHub <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+        </div></div>
       </div>
     </article>
 

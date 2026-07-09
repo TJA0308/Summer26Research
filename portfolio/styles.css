@@ -386,30 +386,21 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   box-shadow: 0 20px 40px -16px rgba(0,0,0,.55);
 }
 
-/* Description reveal on hover — staggered slide-up */
-.card-body .tech-row,
-.card-body .card-desc,
-.card-body .card-link {
-  opacity: 0;
-  transform: translateY(10px);
-  transition: opacity .25s ease, transform .25s ease;
-  pointer-events: none;
+/* Description reveal — grid-row collapse so no dead space */
+.card-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows .4s cubic-bezier(0.16,1,0.3,1);
 }
-/* Leave: reverse order (link fades first, tech last) */
-.card-body .tech-row  { transition-delay: .12s; }
-.card-body .card-desc { transition-delay: .06s; }
-.card-body .card-link { transition-delay: 0s;   }
-
-/* Enter: top-down order */
-.project-card:hover .card-body .tech-row {
-  opacity: 1; transform: translateY(0); pointer-events: auto; transition-delay: 0s;
+.card-reveal-inner {
+  min-height: 0;
+  overflow: hidden;
+  display: flex; flex-direction: column; gap: 12px;
+  padding-top: 0;
+  transition: padding-top .4s cubic-bezier(0.16,1,0.3,1);
 }
-.project-card:hover .card-body .card-desc {
-  opacity: 1; transform: translateY(0); pointer-events: auto; transition-delay: .06s;
-}
-.project-card:hover .card-body .card-link {
-  opacity: 1; transform: translateY(0); pointer-events: auto; transition-delay: .12s;
-}
+.project-card:hover .card-reveal { grid-template-rows: 1fr; }
+.project-card:hover .card-reveal-inner { padding-top: 14px; }
 
 .project-card.featured { grid-column: span 2; }
 @media (max-width: 820px) { .project-card.featured { grid-column: span 1; } }
@@ -425,14 +416,14 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 }
 
 .card-visual {
-  height: 200px;
+  flex: 1;
+  min-height: 180px;
   position: relative; overflow: hidden;
   background: linear-gradient(135deg, rgba(125,211,252,.08), rgba(167,139,250,.08));
   border-bottom: 1px solid var(--border);
 }
-.project-card.featured .card-visual { height: 260px; }
 
-.card-body { padding: 24px 24px 26px; display: flex; flex-direction: column; gap: 14px; flex: 1; position: relative; z-index: 1; }
+.card-body { padding: 20px 22px 22px; display: flex; flex-direction: column; flex-shrink: 0; position: relative; z-index: 1; }
 .tech-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
   font-family: 'JetBrains Mono', monospace;
