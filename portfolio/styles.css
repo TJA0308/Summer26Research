@@ -752,26 +752,19 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 }
 .in-view { opacity: 1 !important; transform: translateY(0) !important; }
 
-/* Materialise-in for project cards */
+/* Scroll-reveal for project cards — clean fade-up only */
 .project-card {
   opacity: 0;
-  transform: translateY(56px) scale(0.90);
-  filter: blur(6px);
-  transition: opacity .75s var(--ease), transform .75s cubic-bezier(0.22,1,0.36,1),
-              filter .75s var(--ease), border-color .4s var(--ease), box-shadow .4s var(--ease);
+  transform: translateY(36px);
+  transition: opacity .6s cubic-bezier(0.16,1,0.3,1),
+              transform .6s cubic-bezier(0.16,1,0.3,1),
+              border-color .4s var(--ease),
+              box-shadow .4s var(--ease);
 }
 .project-card.flipped {
   opacity: 1;
-  transform: translateY(0) scale(1);
-  filter: blur(0);
+  transform: translateY(0);
 }
-/* brief glow burst when card materialises */
-@keyframes cardArrive {
-  0%   { box-shadow: 0 0 0 0 rgba(125,211,252,0); }
-  40%  { box-shadow: 0 0 40px 8px rgba(125,211,252,.35), 0 0 80px 16px rgba(167,139,250,.20); }
-  100% { box-shadow: 0 0 0 0 rgba(125,211,252,0); }
-}
-.project-card.flipped { animation: cardArrive 1s var(--ease) both; }
 
 /* ---------- Mobile ---------- */
 @media (max-width: 720px) {
