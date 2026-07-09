@@ -307,22 +307,14 @@ if (cb) {
   }
 }
 
-// ---------- Dramatic tilt + shimmer ----------
+// ---------- Shimmer follows mouse ----------
 document.querySelectorAll('[data-tilt]').forEach(card => {
   card.addEventListener('mousemove', (e) => {
     const r = card.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width - 0.5;
-    const y = (e.clientY - r.top) / r.height - 0.5;
-    card.style.transform =
-      `perspective(1000px) rotateX(${-y * 20}deg) rotateY(${x * 20}deg) translateY(-8px) scale(1.02)`;
-    // shimmer position
     const px = ((e.clientX - r.left) / r.width) * 100;
     const py = ((e.clientY - r.top) / r.height) * 100;
     card.style.setProperty('--mx', px + '%');
     card.style.setProperty('--my', py + '%');
-  });
-  card.addEventListener('mouseleave', () => {
-    card.style.transform = '';
   });
 });
 

@@ -377,10 +377,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   border-radius: var(--radius-lg);
   overflow: hidden;
   position: relative;
-  transition: transform .5s var(--ease), border-color .4s var(--ease), box-shadow .4s var(--ease);
   display: flex; flex-direction: column;
-  transform-style: preserve-3d;
-  will-change: transform;
 }
 
 /* Animated glow border on hover */
@@ -424,8 +421,9 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .project-card:hover .card-shimmer { opacity: 1; }
 
 .project-card:hover {
+  transform: translateY(-6px);
   border-color: var(--border-strong);
-  box-shadow: 0 30px 60px -20px rgba(0,0,0,.7), 0 0 40px -10px rgba(125,211,252,.25);
+  box-shadow: 0 24px 48px -16px rgba(0,0,0,.6), 0 0 32px -8px rgba(125,211,252,.2);
 }
 
 .project-card.featured { grid-column: span 2; }
@@ -752,18 +750,24 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 }
 .in-view { opacity: 1 !important; transform: translateY(0) !important; }
 
-/* Scroll-reveal for project cards — clean fade-up only */
+/* Scroll-reveal for project cards */
 .project-card {
   opacity: 0;
   transform: translateY(36px);
   transition: opacity .6s cubic-bezier(0.16,1,0.3,1),
-              transform .6s cubic-bezier(0.16,1,0.3,1),
-              border-color .4s var(--ease),
-              box-shadow .4s var(--ease);
+              transform .5s cubic-bezier(0.16,1,0.3,1),
+              border-color .3s var(--ease),
+              box-shadow .3s var(--ease);
 }
 .project-card.flipped {
   opacity: 1;
   transform: translateY(0);
+}
+.project-card:hover {
+  transition: opacity .6s cubic-bezier(0.16,1,0.3,1),
+              transform .3s var(--ease),
+              border-color .3s var(--ease),
+              box-shadow .3s var(--ease);
 }
 
 /* ---------- Mobile ---------- */
