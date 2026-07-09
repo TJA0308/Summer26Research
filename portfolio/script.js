@@ -307,16 +307,6 @@ if (cb) {
   }
 }
 
-// ---------- Shimmer follows mouse ----------
-document.querySelectorAll('[data-tilt]').forEach(card => {
-  card.addEventListener('mousemove', (e) => {
-    const r = card.getBoundingClientRect();
-    const px = ((e.clientX - r.left) / r.width) * 100;
-    const py = ((e.clientY - r.top) / r.height) * 100;
-    card.style.setProperty('--mx', px + '%');
-    card.style.setProperty('--my', py + '%');
-  });
-});
 
 // ---------- Periodic re-glitch of hero name ----------
 setInterval(() => {
