@@ -33,7 +33,7 @@ from torchvision import models
 sys.path.insert(0, str(Path(__file__).parent))
 from cnn_train import (
     SPEED_LABELS, SPEED_NAMES,
-    FEED_TEST_RUNS,
+    FEED_LABELS, FEED_NAMES, FEED_TEST_RUNS,
     FEED_COARSE_LABELS, FEED_COARSE_NAMES, FEED_COARSE_TEST_RUNS_12,
     DOC_LABELS,   DOC_NAMES,
     RA_LABELS,    RA_NAMES, RA_TEST_RUNS, RA_TEST_RUNS_12,
@@ -230,7 +230,7 @@ def main():
     parser.add_argument("--img_dir",      required=True,
                         help="Directory of .npy scalogram files (from scalogram_hilbert.py)")
     parser.add_argument("--target",       default="speed",
-                        choices=["speed", "doc", "feed_coarse", "roughness"])
+                        choices=["speed", "doc", "feed", "feed_coarse", "roughness"])
     parser.add_argument("--backbone",     default="resnet18",
                         choices=["resnet18", "resnet50", "efficientnet_b0", "convnext_tiny"])
     parser.add_argument("--epochs",       type=int,   default=20)
@@ -269,6 +269,10 @@ def main():
         label_map, class_names, test_runs, num_classes = (
             DOC_LABELS, DOC_NAMES, DOC_TEST_RUNS_H, 3)
         default_save = f"hilbert_doc_{args.backbone}.pt"
+    elif args.target == "feed":
+        label_map, class_names, test_runs, num_classes = (
+            FEED_LABELS, FEED_NAMES, FEED_TEST_RUNS, 6)
+        default_save = f"hilbert_feed_{args.backbone}.pt"
     elif args.target == "feed_coarse":
         label_map, class_names, test_runs, num_classes = (
             FEED_COARSE_LABELS, FEED_COARSE_NAMES, FEED_COARSE_TEST_RUNS_H, 3)
@@ -283,6 +287,7 @@ def main():
     smote_csv_names = {
         "speed":       "smote_h_speed_labels.csv",
         "doc":         "smote_h_doc_labels.csv",
+        "feed":        "smote_h_feed_labels.csv",
         "feed_coarse": "smote_h_feed_coarse_labels.csv",
         "roughness":   "smote_h_roughness_labels.csv",
     }

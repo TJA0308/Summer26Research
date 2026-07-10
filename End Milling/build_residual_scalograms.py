@@ -190,7 +190,7 @@ def build_residual_dir(src_dir: Path, out_dir: Path, run_to_condition: dict):
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--target", required=True, choices=["feed_coarse", "roughness"])
+    parser.add_argument("--target", required=True, choices=["feed_coarse", "roughness", "feed"])
     parser.add_argument("--src_dirs", nargs="+", default=["scalograms_10w", "scalograms_ses_10w"])
     args = parser.parse_args()
 
@@ -198,6 +198,7 @@ def main():
     run_to_condition = build_run_to_condition(mod)
 
     suffix = "_residual" if args.target == "feed_coarse" else f"_residual_{args.target}"
+
 
     for src_name in args.src_dirs:
         src_dir = ROOT / src_name
