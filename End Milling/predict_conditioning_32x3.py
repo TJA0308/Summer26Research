@@ -107,19 +107,25 @@ def main():
     model.eval()
 
     _, val_tf = cnn_train_32x3.build_transforms()
-    df = pd.read_csv(img_dir / "labels.csv")
 
     label_map = cnn_train_32x3.SPEED_LABELS if args.target == "speed" else cnn_train_32x3.DOC_LABELS
 
+    # Globs PNGs directly rather than reading labels.csv, so this also works
+    # on residual-corrected dirs (build_residual_scalograms.py only ever
+    # writes PNGs, no labels.csv) -- same convention cnn_train.py's own
+    # load_split() uses. Synthetic SMOTE runs are skipped (not real runs,
+    # not in label_map).
     rows, n_correct = [], 0
-    for _, row in df.iterrows():
-        path = img_dir / row.filename
+    for path in sorted(img_dir.glob("*.png")):
+        run = path.stem.split("_w")[0]
+        if run not in label_map:
+            continue
         img = Image.open(path).convert("RGB")
         t = val_tf(img).unsqueeze(0).to(device)
         pred = model(t).argmax(1).item()
-        true = label_map[row.run]
+        true = label_map[run]
         n_correct += int(pred == true)
-        rows.append({"filename": row.filename, "pred_label": pred})
+        rows.append({"filename": path.name, "pred_label": pred})
 
     print(f"  Predictions match true label for {n_correct}/{len(rows)} of all real images "
           f"(includes this model's own train images, so expect this to read higher than "

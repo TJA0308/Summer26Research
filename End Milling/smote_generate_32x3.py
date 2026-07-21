@@ -102,10 +102,10 @@ def load_block_sizes(img_dir: Path) -> list:
 
 
 def load_run_vectors(img_dir: Path, train_runs: set, n_windows: int):
-    """Returns (vectors [n_runs, 32*3] float32, run_ids [n_runs] str) from
+    """Returns (vectors [n_runs, 32*n_cols] float32, run_ids [n_runs] str) from
     features_raw.npz, restricted to train_runs, sorted for determinism.
     Each run's vector is its window blocks concatenated in order -- total
-    length is always 32*3=96 regardless of how those 32 rows are divided
+    length is always 32*n_cols regardless of how those 32 rows are divided
     into n_windows blocks, since the blocks are a partition of the same 32
     rows (see build_32x3_features.py)."""
     npz = np.load(img_dir / "features_raw.npz")
@@ -115,6 +115,36 @@ def load_run_vectors(img_dir: Path, train_runs: set, n_windows: int):
         window_arrs = [npz[f"{run}_w{k}"] for k in range(n_windows)]
         vecs.append(np.concatenate([w.reshape(-1) for w in window_arrs]))
     return np.stack(vecs).astype(np.float32), runs
+
+
+def load_run_vectors_from_pngs(img_dir: Path, train_runs: set, n_windows: int):
+    """Fallback for directories with no features_raw.npz -- e.g. residual-
+    corrected dirs (build_residual_scalograms.py only ever writes PNGs, no
+    sidecar float/json data). Reads each window's uint8 pixels directly
+    (same convention Shoulder Milling's ORIGINAL smote_generate_param.py
+    uses, since it never had an npz either). Returns (vectors, run_ids,
+    window_shape) -- window_shape is (rows, cols), identical for every
+    window here since build_residual_scalograms.py's inputs were already
+    uniform-shaped."""
+    runs = sorted(train_runs, key=lambda s: int(s[3:]))
+    vecs = []
+    shape = None
+    for run in runs:
+        window_arrs = []
+        for k in range(n_windows):
+            arr = np.asarray(Image.open(img_dir / f"{run}_w{k}.png"), dtype=np.float32)
+            if shape is None:
+                shape = arr.shape
+            window_arrs.append(arr.reshape(-1))
+        vecs.append(np.concatenate(window_arrs))
+    return np.stack(vecs), runs, shape
+
+
+def infer_n_windows(img_dir: Path, mod) -> int:
+    """For directories with no selected_scales.json (residual dirs):
+    count how many run{N}_w{K}.png files exist for any one known real run."""
+    any_run = next(iter(mod.SPEED_LABELS))
+    return len(list(img_dir.glob(f"{any_run}_w*.png")))
 
 
 def split_vector_into_windows(vec: np.ndarray, block_sizes: list, n_cols: int) -> list:
@@ -190,19 +220,34 @@ def generate_for(img_dir: Path, target: str, n_windows: int, mod, rng):
     label_map, test_runs = label_map_and_test_runs(target, mod)
     train_runs = set(label_map.keys()) - set(test_runs)
 
-    block_sizes = load_block_sizes(img_dir)
-    vectors, run_ids = load_run_vectors(img_dir, train_runs, n_windows)
+    has_float_data = (img_dir / "selected_scales.json").exists() and (img_dir / "features_raw.npz").exists()
+
+    if has_float_data:
+        block_sizes = load_block_sizes(img_dir)
+        vectors, run_ids = load_run_vectors(img_dir, train_runs, n_windows)
+        n_cols = vectors.shape[1] // sum(block_sizes)
+    else:
+        # Residual-corrected dirs have no features_raw.npz/selected_scales.json
+        # (build_residual_scalograms.py only writes PNGs) -- SMOTE directly
+        # on the (already-quantized) pixel values instead.
+        print("  No features_raw.npz/selected_scales.json -- SMOTE-ing directly "
+              "on pixel values (residual-dir fallback)")
+        vectors, run_ids, win_shape = load_run_vectors_from_pngs(img_dir, train_runs, n_windows)
+        block_sizes = [win_shape[0]] * n_windows
+        n_cols = win_shape[1]
+
     labels = np.array([label_map[r] for r in run_ids], dtype=int)
 
     syn_vecs, syn_labels, parent_a, parent_b = smote_balance_runs(vectors, labels, run_ids, rng)
 
-    # Re-derive the same column-wise normalisation constants used when the
-    # real PNGs were quantized, so synthetic images are saved consistently.
-    all_windows = np.load(img_dir / "features_raw.npz")
-    n_cols = all_windows[all_windows.files[0]].shape[-1]
-    all_flat = np.concatenate([all_windows[k].reshape(-1, n_cols) for k in all_windows.files])
-    mu, sig = all_flat.mean(axis=0), all_flat.std(axis=0)
-    sig[sig < 1e-10] = 1.0
+    if has_float_data:
+        # Re-derive the same column-wise normalisation constants used when
+        # the real PNGs were quantized, so synthetic images are saved
+        # consistently.
+        all_windows = np.load(img_dir / "features_raw.npz")
+        all_flat = np.concatenate([all_windows[k].reshape(-1, n_cols) for k in all_windows.files])
+        mu, sig = all_flat.mean(axis=0), all_flat.std(axis=0)
+        sig[sig < 1e-10] = 1.0
 
     rows = []
     speed_map = mod.SPEED_LABELS
@@ -211,7 +256,10 @@ def generate_for(img_dir: Path, target: str, n_windows: int, mod, rng):
         synth_run = f"smote{target}{i:03d}"
         windows = split_vector_into_windows(vec, block_sizes, n_cols)
         for k in range(n_windows):
-            img_u8 = quantize_like_real(windows[k], mu, sig)
+            if has_float_data:
+                img_u8 = quantize_like_real(windows[k], mu, sig)
+            else:
+                img_u8 = np.clip(windows[k], 0, 255).astype(np.uint8)
             Image.fromarray(img_u8).save(img_dir / f"{synth_run}_w{k}.png")
         rows.append({
             "run": synth_run, "label": lbl,
@@ -240,15 +288,21 @@ def main():
 
     img_dir = ROOT / args.img_dir
     if not img_dir.exists():
-        raise FileNotFoundError(f"{img_dir} not found -- run build_32x3_features.py first")
+        raise FileNotFoundError(f"{img_dir} not found -- run build_32x3_features.py "
+                                 f"or build_residual_scalograms.py first")
+
+    mod = _load_cnn_train_module()
 
     n_windows = args.n_windows
     if n_windows is None:
-        import json
-        with open(img_dir / "selected_scales.json") as f:
-            n_windows = json.load(f)["n_windows"]
+        sel_path = img_dir / "selected_scales.json"
+        if sel_path.exists():
+            with open(sel_path) as f:
+                n_windows = json.load(f)["n_windows"]
+        else:
+            n_windows = infer_n_windows(img_dir, mod)
+            print(f"  No selected_scales.json -- inferred n_windows={n_windows} from filenames")
 
-    mod = _load_cnn_train_module()
     targets = [args.target] if args.target else list(TARGET_CSV.keys())
 
     rng = np.random.default_rng(SEED)

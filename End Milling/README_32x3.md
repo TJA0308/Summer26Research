@@ -53,13 +53,15 @@ independent real measurements the way Shoulder Milling's a/b/c windows were.
 | `em_feature_common.py` | Shared Excel loading, run/label wiring, CWT scale selection, normalize+window+write logic used by both builders |
 | `build_32x3_features.py` | Option D analog (3 columns) |
 | `build_32x12_features.py` | Option C analog (12 columns) |
-| `smote_generate_32x3.py` | Persisted whole-run SMOTE synthesis (k-NN interpolation). Column-count-agnostic -- serves both pipelines, no flag needed |
-| `build_residual_scalograms.py` | **Reused unmodified** -- already generic over any `run{N}_w{K}.png` directory; subtracts the per-(DOC,speed)-condition mean |
-| `predict_conditioning_32x3.py` | Runs a trained speed/doc model over all windows, writes `<target>_pred_<scalo_tag>....csv` for the leakage-honest cascade |
-| `cnn_model/cnn_train_32x3.py` | Training entry point: 4 targets, SMOTE auto-load, `--conditioned` (ground-truth cascade), `--cascade_predicted` (predicted-parent cascade) |
-| `pca_analysis_32x3.py` | 7-plot PCA diagnostic suite. Reads column names/count from `selected_scales.json`, so it works unmodified on either pipeline |
+| `smote_generate_32x3.py` | Persisted whole-run SMOTE synthesis (k-NN interpolation). Column-count-agnostic, and falls back to SMOTE-ing directly on pixel values when `features_raw.npz`/`selected_scales.json` don't exist (residual dirs) -- serves all three (base, feedopt, residual) x both pipelines with no flag needed |
+| `build_residual_scalograms.py` | **Reused unmodified** -- already generic over any `run{N}_w{K}.png` directory; subtracts the per-(DOC,speed)-condition mean. Only ever writes PNGs (no `labels.csv`/`features_raw.npz`/`selected_scales.json`) |
+| `predict_conditioning_32x3.py` | Runs a trained speed/doc model over all windows (globs PNGs directly, no `labels.csv` dependency -- works on residual dirs too), writes `<target>_pred_<scalo_tag>....csv` for the leakage-honest cascade |
+| `cnn_model/cnn_train_32x3.py` | Training entry point: 4 targets, SMOTE auto-load, `--conditioned` (ground-truth cascade), `--cascade_predicted` (predicted-parent cascade). Its plain-training path (`load_split`) globs PNGs directly too -- always worked on residual dirs even before the SMOTE/predict fixes above |
+| `pca_analysis_32x3.py` | 7-plot PCA diagnostic suite. Reads column names/count from `selected_scales.json`, so it works unmodified on either pipeline (not run on residual dirs -- those have no `run_features_raw.npz` either, and residual-correcting is a training-time concern, not a feature-space one) |
 | `run_sweep_32xN.ps1` | Trains all 4 targets x 4 backbones x 2 LRs x with/without SMOTE, across both layouts and both window variants (256 runs) |
 | `run_sweep_cascade.ps1` | feed_coarse cascade sweep: ground-truth `--conditioned` + the full speed/doc -> predict -> `--cascade_predicted` chain |
+| `run_sweep_residual.ps1` | Same grid as `run_sweep_32xN.ps1` but for the 8 residual-corrected dirs (roughness x 4 dirs, feed_coarse x 4 dirs) + ground-truth `--conditioned` on the feed_coarse residual dirs (160 runs total) |
+| `residual_all_commands.txt` | The same 160 commands `run_sweep_residual.ps1` runs, as a flat, human-readable list |
 
 ## Is it running all four backbones with/without SMOTE?
 
@@ -103,6 +105,14 @@ synthetic `smote<target><i>_w{K}.png` files. PCA charts are in
 `pca_plots_scalograms_32x3/`, `pca_plots_scalograms_32x3_feedopt/`,
 `pca_plots_scalograms_32x12/`, `pca_plots_scalograms_32x12_feedopt/`.
 
+Each `scalograms_32x{3,12}*_residual*` directory contains only
+`run{N}_w{K}.png` (from `build_residual_scalograms.py`) plus, after the
+SMOTE step, `smote_<target>_labels.csv` + synthetic PNGs (`target` is
+`roughness` or `feed_coarse`, whichever that residual dir was built for) --
+no `labels.csv`/`features_raw.npz`/`selected_scales.json`; every script that
+touches these dirs was written or patched to not need them (see Files
+table above).
+
 ## Run everything at once
 
 ```bash
@@ -115,16 +125,15 @@ powershell -File run_sweep_32xN.ps1
 # feed_coarse cascade sweep: ground-truth --conditioned + the leakage-honest
 # speed/doc -> predict_conditioning_32x3.py -> --cascade_predicted chain
 powershell -File run_sweep_cascade.ps1
+
+# Residual-corrected training: same grid, on the 8 residual dirs, plus
+# ground-truth --conditioned for feed_coarse's 4 residual dirs (160 runs)
+powershell -File run_sweep_residual.ps1
 ```
 
-Residual-corrected roughness/feed_coarse training isn't in either sweep
-script (it uses a different `--img_dir`, e.g. `scalograms_32x3_residual_roughness`,
-not the base directory) -- run it manually per architecture if you want that
-comparison, e.g.:
-
-```bash
-python cnn_model/cnn_train_32x3.py --target roughness --img_dir scalograms_32x3_residual_roughness --arch resnet18 --lr 1e-3
-```
+`residual_all_commands.txt` has the same 160 commands `run_sweep_residual.ps1`
+runs, spelled out one per line, if you'd rather run them individually or in
+parallel batches instead of through the script.
 
 ## Open questions to check once trained
 
