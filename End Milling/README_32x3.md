@@ -58,10 +58,18 @@ independent real measurements the way Shoulder Milling's a/b/c windows were.
 | `predict_conditioning_32x3.py` | Runs a trained speed/doc model over all windows (globs PNGs directly, no `labels.csv` dependency -- works on residual dirs too), writes `<target>_pred_<scalo_tag>....csv` for the leakage-honest cascade |
 | `cnn_model/cnn_train_32x3.py` | Training entry point: 4 targets, SMOTE auto-load, `--conditioned` (ground-truth cascade), `--cascade_predicted` (predicted-parent cascade). Its plain-training path (`load_split`) globs PNGs directly too -- always worked on residual dirs even before the SMOTE/predict fixes above |
 | `pca_analysis_32x3.py` | 7-plot PCA diagnostic suite. Reads column names/count from `selected_scales.json`, so it works unmodified on either pipeline (not run on residual dirs -- those have no `run_features_raw.npz` either, and residual-correcting is a training-time concern, not a feature-space one) |
-| `run_sweep_32xN.ps1` | Trains all 4 targets x 4 backbones x 2 LRs x with/without SMOTE, across both layouts and both window variants (256 runs) |
-| `run_sweep_cascade.ps1` | feed_coarse cascade sweep: ground-truth `--conditioned` + the full speed/doc -> predict -> `--cascade_predicted` chain |
-| `run_sweep_residual.ps1` | Same grid as `run_sweep_32xN.ps1` but for the 8 residual-corrected dirs (roughness x 4 dirs, feed_coarse x 4 dirs) + ground-truth `--conditioned` on the feed_coarse residual dirs (160 runs total) |
-| `residual_all_commands.txt` | The same 160 commands `run_sweep_residual.ps1` runs, as a flat, human-readable list |
+| `run_sweep_32xN.ps1` | Trains all 4 targets x 4 backbones x 2 LRs x with/without SMOTE, across both layouts and both window variants (256 runs) -- loop-based |
+| `run_sweep_cascade.ps1` | feed_coarse cascade sweep: ground-truth `--conditioned` + the full speed/doc -> predict -> `--cascade_predicted` chain (136 runs) -- loop-based |
+| `run_sweep_residual.ps1` | Same grid as `run_sweep_32xN.ps1` but for the 8 residual-corrected dirs (roughness x 4 dirs, feed_coarse x 4 dirs) + ground-truth `--conditioned` on the feed_coarse residual dirs (160 runs) -- loop-based |
+| `run_sweep_32xN_detailed.ps1` | The same 256 commands as `run_sweep_32xN.ps1`, spelled out one line each (no loops) -- for reading/auditing/copy-pasting individual lines |
+| `run_sweep_cascade_detailed.ps1` | The same 136 commands as `run_sweep_cascade.ps1`, spelled out flat |
+| `run_sweep_residual_detailed.ps1` | The same 160 commands as `run_sweep_residual.ps1`, spelled out flat |
+| `run_everything_detailed.ps1` | All 552 commands from the three `_detailed.ps1` files above, concatenated into one file/one run |
+
+The `_detailed.ps1` files and the loop-based files run the identical grid --
+pick whichever you'd rather work with. The detailed ones are plain
+`python ...` lines with a 2-line PowerShell header, so they're just as
+copy-paste-able into a plain shell as a `.txt` would be.
 
 ## Is it running all four backbones with/without SMOTE?
 
@@ -115,25 +123,35 @@ table above).
 
 ## Run everything at once
 
+Loop-based (compact, same grid):
+
 ```bash
 cd "End Milling"
 
-# Plain training sweep: all 4 targets x 4 backbones x 2 LRs x with/without
-# SMOTE, across 32x3/32x12 and 3win/9win (256 runs)
-powershell -File run_sweep_32xN.ps1
-
-# feed_coarse cascade sweep: ground-truth --conditioned + the leakage-honest
-# speed/doc -> predict_conditioning_32x3.py -> --cascade_predicted chain
-powershell -File run_sweep_cascade.ps1
-
-# Residual-corrected training: same grid, on the 8 residual dirs, plus
-# ground-truth --conditioned for feed_coarse's 4 residual dirs (160 runs)
-powershell -File run_sweep_residual.ps1
+powershell -File run_sweep_32xN.ps1       # plain training: 256 runs
+powershell -File run_sweep_cascade.ps1    # feed_coarse cascade: 136 runs
+powershell -File run_sweep_residual.ps1   # residual-corrected: 160 runs
 ```
 
-`residual_all_commands.txt` has the same 160 commands `run_sweep_residual.ps1`
-runs, spelled out one per line, if you'd rather run them individually or in
-parallel batches instead of through the script.
+Or the flat, fully-spelled-out equivalents (every one of the 552 commands
+visible, nothing hidden behind a loop) -- either run each phase separately
+or run all 552 in one shot:
+
+```bash
+cd "End Milling"
+
+powershell -File run_sweep_32xN_detailed.ps1
+powershell -File run_sweep_cascade_detailed.ps1
+powershell -File run_sweep_residual_detailed.ps1
+
+# -- or, all three phases in one file --
+powershell -File run_everything_detailed.ps1
+```
+
+Every `_detailed.ps1` file is plain `python ...` lines (with just a 2-line
+PowerShell header), grouped under `#` section comments per target/layout/
+window-variant -- open any of them if you just want to read or copy-paste
+the commands rather than run the file.
 
 ## Open questions to check once trained
 
