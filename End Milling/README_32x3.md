@@ -29,6 +29,33 @@ Both share loading/scale-selection/windowing code in `em_feature_common.py`
 so they never disagree about run->sheet mapping or which 32 scales were
 selected for a given target.
 
+## Every target gets its own scale selection
+
+Originally only `roughness` (default) and `feed_coarse` (`_feedopt`) had
+dedicated top-32-of-64 scale selections; `speed` and `doc` just trained on
+whichever of those two was passed as `--img_dir`. `compare_scale_selection.py`
+tested whether that was actually fine, by computing each target's OWN true
+top-32 ranking and checking how well roughness's/feed_coarse's selections
+would have scored if repurposed:
+
+| Existing selection | vs speed | vs doc |
+|---|---|---|
+| roughness's top-32   | 10/32 rows overlap, **86.7%** efficiency | 13/32 rows overlap, **93.2%** efficiency |
+| feed_coarse's top-32 | 26/32 rows overlap, **98.7%** efficiency | 21/32 rows overlap, **94.9%** efficiency |
+
+("Efficiency" = mean |Spearman rho| of that target's own score function over
+the existing 32 rows, divided by the mean over that target's true best 32
+rows -- 100% would mean the existing selection is already optimal.)
+
+Roughness's selection left real signal on the table for both speed and doc
+(worst case: only 86.7% as good as a dedicated selection, barely more than
+half the rows even overlapping). Feed_coarse's selection happened to be
+decent for speed but not doc. Conclusion: dedicated `_speedopt`/`_docopt`
+selections are worth having, not just tidiness -- `scalograms_32x{3,12}_
+speedopt/` and `_docopt/` (plus their `_9win` variants) now exist and
+`run_sweep_32xN.ps1`/`run_sweep_32xN_detailed.ps1` route speed/doc training
+to them instead of the base or feedopt dirs.
+
 ## Why "windows" here are a row-split, not a real re-window
 
 Shoulder Milling's 3 windows/run (a/b/c) were 3 separate real measurement
@@ -51,8 +78,9 @@ independent real measurements the way Shoulder Milling's a/b/c windows were.
 | File | Purpose |
 |---|---|
 | `em_feature_common.py` | Shared Excel loading, run/label wiring, CWT scale selection, normalize+window+write logic used by both builders |
-| `build_32x3_features.py` | Option D analog (3 columns) |
-| `build_32x12_features.py` | Option C analog (12 columns) |
+| `compare_scale_selection.py` | Test: quantifies overlap/efficiency between each target's own top-32 scale selection and every other target's -- see "Every target gets its own scale selection" above |
+| `build_32x3_features.py` | Option D analog (3 columns). `--target` in `{roughness, feed_coarse, speed, doc}` |
+| `build_32x12_features.py` | Option C analog (12 columns). Same 4 `--target` values |
 | `smote_generate_32x3.py` | Persisted whole-run SMOTE synthesis (k-NN interpolation). Column-count-agnostic, and falls back to SMOTE-ing directly on pixel values when `features_raw.npz`/`selected_scales.json` don't exist (residual dirs) -- serves all three (base, feedopt, residual) x both pipelines with no flag needed |
 | `build_residual_scalograms.py` | **Reused unmodified** -- already generic over any `run{N}_w{K}.png` directory; subtracts the per-(DOC,speed)-condition mean. Only ever writes PNGs (no `labels.csv`/`features_raw.npz`/`selected_scales.json`) |
 | `predict_conditioning_32x3.py` | Runs a trained speed/doc model over all windows (globs PNGs directly, no `labels.csv` dependency -- works on residual dirs too), writes `<target>_pred_<scalo_tag>....csv` for the leakage-honest cascade |
@@ -89,29 +117,43 @@ smaller slice first.
 ```
 scalograms_32x3/                     -- roughness-tuned, 3 windows/run (135 samples)
 scalograms_32x3_feedopt/             -- feed_coarse-tuned, 3 windows/run
+scalograms_32x3_speedopt/            -- speed-tuned, 3 windows/run
+scalograms_32x3_docopt/              -- doc-tuned, 3 windows/run
 scalograms_32x3_9win/                -- roughness-tuned, 9 windows/run (405 samples)
 scalograms_32x3_feedopt_9win/        -- feed_coarse-tuned, 9 windows/run
+scalograms_32x3_speedopt_9win/       -- speed-tuned, 9 windows/run
+scalograms_32x3_docopt_9win/         -- doc-tuned, 9 windows/run
 scalograms_32x3_residual_roughness/  -- residual-corrected roughness variant
 scalograms_32x3_9win_residual_roughness/
 scalograms_32x3_feedopt_residual/    -- residual-corrected feed_coarse variant
 scalograms_32x3_feedopt_9win_residual/
 
-scalograms_32x12/                    -- same 4 base variants, 12-column layout
+scalograms_32x12/                    -- same 8 non-residual variants, 12-column layout
 scalograms_32x12_feedopt/
+scalograms_32x12_speedopt/
+scalograms_32x12_docopt/
 scalograms_32x12_9win/
 scalograms_32x12_feedopt_9win/
+scalograms_32x12_speedopt_9win/
+scalograms_32x12_docopt_9win/
 scalograms_32x12_residual_roughness/
 scalograms_32x12_9win_residual_roughness/
 scalograms_32x12_feedopt_residual/
 scalograms_32x12_feedopt_9win_residual/
 ```
 
+(No residual variants for `_speedopt`/`_docopt`: speed/doc were excluded from
+condition-residual correction from the start -- see
+`build_residual_scalograms.py`'s docstring -- they already hit ~100% on raw
+features, so there's nothing for residual correction to rescue.)
+
 Each `scalograms_32x{3,12}*` directory (non-residual) contains:
 `run{N}_w{K}.png`, `labels.csv`, `selected_scales.json`, `features_raw.npz`,
 `run_features_raw.npz`, and (after the SMOTE step) `smote_*_labels.csv` +
-synthetic `smote<target><i>_w{K}.png` files. PCA charts are in
-`pca_plots_scalograms_32x3/`, `pca_plots_scalograms_32x3_feedopt/`,
-`pca_plots_scalograms_32x12/`, `pca_plots_scalograms_32x12_feedopt/`.
+synthetic `smote<target><i>_w{K}.png` files. PCA charts (`--target` matching
+each dir's own scale-selection target) are in `pca_plots_scalograms_32x3/`,
+`pca_plots_scalograms_32x3_feedopt/`, `pca_plots_scalograms_32x3_speedopt/`,
+`pca_plots_scalograms_32x3_docopt/`, and the same four for `32x12`.
 
 Each `scalograms_32x{3,12}*_residual*` directory contains only
 `run{N}_w{K}.png` (from `build_residual_scalograms.py`) plus, after the

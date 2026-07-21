@@ -8,6 +8,13 @@
 # SMOTE = 256 runs) is much larger than the single-pipeline sweeps that
 # convention was originally written for.
 #
+# Each target trains on its OWN scale-selection-tuned directory --
+# roughness on the base dir, feed_coarse on _feedopt, speed on _speedopt,
+# doc on _docopt. compare_scale_selection.py found reusing roughness's
+# selection for speed/doc left real signal on the table (only 86.7%/93.2%
+# as efficient as a dedicated selection), which is why _speedopt/_docopt
+# exist at all -- see build_32x3_features.py's docstring.
+#
 # NOT included here (separate, smaller scripts / manual steps -- see
 # README_32x3.md): residual-corrected img_dirs, and the feed_coarse cascade
 # (--conditioned / --cascade_predicted), which only apply to one target and
@@ -26,8 +33,10 @@ $LRs   = @("1e-3", "1e-4")
 $Targets = @("speed", "doc", "feed_coarse", "roughness")
 
 $Layouts = @(
-    @{ Name = "32x3";  Base = "scalograms_32x3";  Feedopt = "scalograms_32x3_feedopt" },
-    @{ Name = "32x12"; Base = "scalograms_32x12"; Feedopt = "scalograms_32x12_feedopt" }
+    @{ Name = "32x3";  Base = "scalograms_32x3";  Feedopt = "scalograms_32x3_feedopt";
+       Speedopt = "scalograms_32x3_speedopt"; Docopt = "scalograms_32x3_docopt" },
+    @{ Name = "32x12"; Base = "scalograms_32x12"; Feedopt = "scalograms_32x12_feedopt";
+       Speedopt = "scalograms_32x12_speedopt"; Docopt = "scalograms_32x12_docopt" }
 )
 $WinVariants = @("", "_9win")
 
@@ -36,11 +45,15 @@ $done  = 0
 
 foreach ($layout in $Layouts) {
     foreach ($winSuffix in $WinVariants) {
-        $baseDir    = "$($layout.Base)$winSuffix"
-        $feedoptDir = "$($layout.Feedopt)$winSuffix"
+        $dirFor = @{
+            "roughness"   = "$($layout.Base)$winSuffix"
+            "feed_coarse" = "$($layout.Feedopt)$winSuffix"
+            "speed"       = "$($layout.Speedopt)$winSuffix"
+            "doc"         = "$($layout.Docopt)$winSuffix"
+        }
 
         foreach ($target in $Targets) {
-            $imgDir = if ($target -eq "feed_coarse") { $feedoptDir } else { $baseDir }
+            $imgDir = $dirFor[$target]
 
             foreach ($arch in $Archs) {
                 foreach ($lr in $LRs) {

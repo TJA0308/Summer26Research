@@ -27,6 +27,8 @@ single PCA over the 45 runs.
 Usage:
     python pca_analysis_32x3.py --img_dir scalograms_32x3 --target roughness
     python pca_analysis_32x3.py --img_dir scalograms_32x3_feedopt --target feed_coarse
+    python pca_analysis_32x3.py --img_dir scalograms_32x3_speedopt --target speed
+    python pca_analysis_32x3.py --img_dir scalograms_32x3_docopt --target doc
 """
 import argparse
 import json
@@ -37,6 +39,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+
+from em_feature_common import load_cnn_train_module
 
 ROOT = Path(__file__).parent
 N_ROWS = 32
@@ -65,19 +69,27 @@ def load_dataset(img_dir: Path, n_cols: int):
     return X, runs, per_run
 
 
-def class_names_for(target: str, row: pd.Series) -> str:
+def class_names_for(target: str, row: pd.Series, mod) -> str:
     if target == "roughness":
         return row["ra_class"]
     if target == "feed_coarse":
         return {0: "Low (3-4)", 1: "Med (5-6)", 2: "High (7-8)"}[row["feed_coarse"]]
+    if target == "speed":
+        return mod.SPEED_NAMES[row["speed"]]
+    if target == "doc":
+        return mod.DOC_NAMES[row["doc"]]
     raise ValueError(target)
 
 
-def continuous_value(target: str, per_run: pd.DataFrame) -> np.ndarray:
+def continuous_value(target: str, per_run: pd.DataFrame, mod) -> np.ndarray:
     if target == "roughness":
         return per_run["ra"].to_numpy()
     if target == "feed_coarse":
         return (per_run["feed"].to_numpy() + 3)   # FEED_LABELS 0..5 -> mm/rev 3..8
+    if target == "speed":
+        return np.array([int(mod.SPEED_NAMES[c].split()[0]) for c in per_run["speed"]])
+    if target == "doc":
+        return np.array([float(mod.DOC_NAMES[c].split()[0]) for c in per_run["doc"]])
     raise ValueError(target)
 
 
@@ -88,7 +100,8 @@ def main():
                         help="scalograms_32x3, scalograms_32x3_feedopt, or a _9win variant "
                              "(run_features_raw.npz is identical for a base dir and its "
                              "_9win sibling -- only the window split differs -- so either works)")
-    parser.add_argument("--target", default="roughness", choices=["roughness", "feed_coarse"],
+    parser.add_argument("--target", default="roughness",
+                        choices=["roughness", "feed_coarse", "speed", "doc"],
                         help="Which target to color/correlate PCs against")
     args = parser.parse_args()
 
@@ -96,11 +109,12 @@ def main():
     out_dir = ROOT / f"pca_plots_{img_dir.name}"
     out_dir.mkdir(exist_ok=True)
 
+    mod = load_cnn_train_module()
     feature_cols = load_feature_cols(img_dir)
     print(f"Loading {img_dir.name} ...")
     X, runs, per_run = load_dataset(img_dir, len(feature_cols))
-    target_val = continuous_value(args.target, per_run)
-    classes = np.array([class_names_for(args.target, per_run.loc[r]) for r in runs])
+    target_val = continuous_value(args.target, per_run, mod)
+    classes = np.array([class_names_for(args.target, per_run.loc[r], mod) for r in runs])
     print(f"  Loaded {X.shape[0]} runs, {X.shape[1]}-dim feature vector each "
           f"({N_ROWS} rows x {len(feature_cols)} cols)")
     print(f"  Target ({args.target}) range: {target_val.min():.3f} - {target_val.max():.3f}  "

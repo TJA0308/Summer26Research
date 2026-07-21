@@ -97,22 +97,42 @@ def load_all_run_images(mod) -> dict:
     return images
 
 
-def select_cwt_rows(images: dict, mod, target: str) -> tuple:
-    """Spearman |rho| of each of the 64 mexican/coif scale rows against the
-    target, averaged, top-32, re-sorted ascending. target: 'roughness' -> Ra
-    (um), 'feed_coarse' -> feed rate (mm/rev). Identical method regardless of
-    output layout (32x3 or 32x12) -- scale selection only ever concerns the
-    two CWT columns."""
+def speed_rpm_value(run: str, mod) -> int:
+    return int(mod.SPEED_NAMES[mod.SPEED_LABELS[run]].split()[0])
+
+
+def doc_mm_value(run: str, mod) -> float:
+    return float(mod.DOC_NAMES[mod.DOC_LABELS[run]].split()[0])
+
+
+def target_values(images: dict, mod, target: str) -> np.ndarray:
+    """Run-level continuous (or ordinal) value to correlate CWT scale rows
+    against for a given target -- shared by select_cwt_rows() and the
+    scale-selection comparison test (compare_scale_selection.py). speed/doc
+    use their real physical values (rpm / mm), not the class index, so
+    Spearman sees the true ordinal spacing (e.g. DOC classes 0/1/2 map to
+    0.015/0.03/0.06 mm -- very unevenly spaced -- not 0/1/2)."""
+    runs = sorted(images.keys(), key=lambda s: int(s[3:]))
+    if target == "roughness":
+        return np.array([RA_VALUES[r] for r in runs])
+    if target == "feed_coarse":
+        return np.array([mod.FEED_LABELS[r] + 3 for r in runs])   # FEED_LABELS 0..5 -> 3..8 mm/rev
+    if target == "speed":
+        return np.array([speed_rpm_value(r, mod) for r in runs])
+    if target == "doc":
+        return np.array([doc_mm_value(r, mod) for r in runs])
+    raise ValueError(target)
+
+
+def cwt_row_scores(images: dict, mod, target: str) -> np.ndarray:
+    """Averaged |Spearman rho| of the 64 mexican/coif scale rows against
+    the target, one score per row (not yet top-32 selected) -- factored out
+    of select_cwt_rows() so compare_scale_selection.py can get scores for
+    all 4 targets without re-deriving the correlation method."""
     runs = sorted(images.keys(), key=lambda s: int(s[3:]))
     mex = np.stack([images[r][:, COL_IDX["64mexican"]] for r in runs])   # (45, 64)
     coi = np.stack([images[r][:, COL_IDX["64coif"]] for r in runs])      # (45, 64)
-
-    if target == "roughness":
-        target_arr = np.array([RA_VALUES[r] for r in runs])
-    elif target == "feed_coarse":
-        target_arr = np.array([mod.FEED_LABELS[r] + 3 for r in runs])
-    else:
-        raise ValueError(target)
+    target_arr = target_values(images, mod, target)
 
     scores = np.zeros(N_FULL)
     for row_i in range(N_FULL):
@@ -121,7 +141,34 @@ def select_cwt_rows(images: dict, mod, target: str) -> tuple:
         s_mex = 0.0 if np.isnan(s_mex) else abs(s_mex)
         s_coi = 0.0 if np.isnan(s_coi) else abs(s_coi)
         scores[row_i] = (s_mex + s_coi) / 2.0
+    return scores
 
+
+TARGET_DIR_SUFFIX = {
+    "roughness": "",             # scalograms_32x3 / scalograms_32x12 (the original default)
+    "feed_coarse": "_feedopt",
+    "speed": "_speedopt",
+    "doc": "_docopt",
+}
+
+
+def out_dir_name(base_name: str, target: str, n_windows: int) -> str:
+    """base_name: 'scalograms_32x3' or 'scalograms_32x12'. Shared naming
+    convention between build_32x3_features.py and build_32x12_features.py so
+    both pipelines' directory names only ever differ by the base_name."""
+    name = base_name + TARGET_DIR_SUFFIX[target]
+    if n_windows != 3:
+        name += f"_{n_windows}win"
+    return name
+
+
+def select_cwt_rows(images: dict, mod, target: str) -> tuple:
+    """Top-32-of-64 mexican/coif scale rows by averaged |Spearman rho|
+    against the target, re-sorted ascending. target: 'roughness' -> Ra (um),
+    'feed_coarse' -> feed rate (mm/rev), 'speed' -> rpm, 'doc' -> mm.
+    Identical method regardless of output layout (32x3 or 32x12) -- scale
+    selection only ever concerns the two CWT columns."""
+    scores = cwt_row_scores(images, mod, target)
     top_idx = np.sort(np.argsort(scores)[::-1][:N_SELECT])
     return top_idx, scores
 

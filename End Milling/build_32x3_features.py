@@ -45,8 +45,20 @@ filenames and a labels.csv):
 
     scalograms_32x3/                    --target roughness (default), n_windows=3
     scalograms_32x3_feedopt/            --target feed_coarse,          n_windows=3
+    scalograms_32x3_speedopt/           --target speed,                n_windows=3
+    scalograms_32x3_docopt/             --target doc,                  n_windows=3
     scalograms_32x3_9win/               --target roughness,            n_windows=9
     scalograms_32x3_feedopt_9win/       --target feed_coarse,          n_windows=9
+    scalograms_32x3_speedopt_9win/      --target speed,                n_windows=9
+    scalograms_32x3_docopt_9win/        --target doc,                  n_windows=9
+
+speed/doc get their own scale selection (dedicated speedopt/docopt dirs)
+rather than reusing roughness's or feed_coarse's top-32 rows --
+compare_scale_selection.py found roughness's selection is only ~87-93%
+as efficient for speed/doc as a dedicated selection would be (10/32 and
+13/32 row overlap respectively); feed_coarse's is closer for speed
+(98.7% efficient, 26/32 overlap) but still not identical, and only 94.9%
+for doc.
 
   <out_dir>/run{N}_w{K}.png       grayscale uint8 PNG, uniform (padded_block_size, 3)
   <out_dir>/labels.csv            filename, sample_id, run, window, speed, doc,
@@ -73,7 +85,7 @@ import numpy as np
 
 from em_feature_common import (
     ROOT, COL_IDX, N_SELECT,
-    load_cnn_train_module, load_all_run_images, select_cwt_rows, write_dataset,
+    load_cnn_train_module, load_all_run_images, select_cwt_rows, write_dataset, out_dir_name,
 )
 
 OUT_FEATURE_COLS = ["FFT", "Mexican", "Coiflet"]
@@ -93,20 +105,18 @@ def build_run_image(img64x12: np.ndarray, sel_rows: np.ndarray) -> np.ndarray:
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
                                       description=__doc__)
-    parser.add_argument("--target", choices=["roughness", "feed_coarse"], default="roughness",
+    parser.add_argument("--target", choices=["roughness", "feed_coarse", "speed", "doc"], default="roughness",
                         help="Which quantity to correlate CWT scale rows against when "
-                             "selecting the top-32 of 64 scales. roughness -> "
-                             "scalograms_32x3/, feed_coarse -> scalograms_32x3_feedopt/")
+                             "selecting the top-32 of 64 scales. roughness -> scalograms_32x3/, "
+                             "feed_coarse -> scalograms_32x3_feedopt/, speed -> "
+                             "scalograms_32x3_speedopt/, doc -> scalograms_32x3_docopt/")
     parser.add_argument("--n_windows", type=int, default=3,
                         help="Row-blocks to split each run's 32-row image into "
                              "(3 = baseline, replicating Shoulder Milling's 3 "
                              "windows/run; 9 -> writes the '_9win' variant)")
     args = parser.parse_args()
 
-    out_name = "scalograms_32x3" if args.target == "roughness" else "scalograms_32x3_feedopt"
-    if args.n_windows != 3:
-        out_name += f"_{args.n_windows}win"
-    out_dir = ROOT / out_name
+    out_dir = ROOT / out_dir_name("scalograms_32x3", args.target, args.n_windows)
     print(f"Target: {args.target}  |  n_windows={args.n_windows}")
     print(f"Output dir: {out_dir}/")
 
