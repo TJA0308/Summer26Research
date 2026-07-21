@@ -6,10 +6,12 @@
 #
 # All 4 backbones x 2 LRs x with/without SMOTE, across both layouts (32x3,
 # 32x12) and both window variants (3win, 9win) = 128 plain-training runs,
-# plus a ground-truth --conditioned cascade sweep for feed_coarse's 4
-# residual dirs (32 more runs). --cascade_predicted is intentionally NOT
-# included here: it would need speed/doc models trained ON the SAME
-# residual (feed_coarse-corrected) images, but that correction specifically
+# plus a ground-truth --conditioned cascade sweep for BOTH targets' 4
+# residual dirs each (64 more runs -- roughness cascade support added
+# alongside feed_coarse's, since both share the same nuisance covariate,
+# see cnn_model/cnn_train_32x3.py's COND_PARENTS). --cascade_predicted is
+# intentionally NOT included here: it would need speed/doc models trained ON
+# the SAME residual-corrected images, but that correction specifically
 # subtracts the speed x doc signal those models would need -- not a
 # meaningful experiment, unlike the non-residual cascade sweep.
 #
@@ -76,4 +78,14 @@ foreach ($d in $FeedCoarseDirs) {
     }
 }
 
-Write-Host "Residual sweep complete: $done plain runs + 32 cascade runs."
+Write-Host "=== Ground-truth --conditioned cascade: roughness residual dirs ==="
+foreach ($d in $RoughnessDirs) {
+    foreach ($arch in $Archs) {
+        foreach ($lr in $LRs) {
+            python cnn_model/cnn_train_32x3.py --target roughness --img_dir $d `
+                --arch $arch --lr $lr --conditioned --run_tag conditioned
+        }
+    }
+}
+
+Write-Host "Residual sweep complete: $done plain runs + 64 cascade runs."

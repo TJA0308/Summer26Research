@@ -84,15 +84,15 @@ independent real measurements the way Shoulder Milling's a/b/c windows were.
 | `smote_generate_32x3.py` | Persisted whole-run SMOTE synthesis (k-NN interpolation). Column-count-agnostic, and falls back to SMOTE-ing directly on pixel values when `features_raw.npz`/`selected_scales.json` don't exist (residual dirs) -- serves all three (base, feedopt, residual) x both pipelines with no flag needed |
 | `build_residual_scalograms.py` | **Reused unmodified** -- already generic over any `run{N}_w{K}.png` directory; subtracts the per-(DOC,speed)-condition mean. Only ever writes PNGs (no `labels.csv`/`features_raw.npz`/`selected_scales.json`) |
 | `predict_conditioning_32x3.py` | Runs a trained speed/doc model over all windows (globs PNGs directly, no `labels.csv` dependency -- works on residual dirs too), writes `<target>_pred_<scalo_tag>....csv` for the leakage-honest cascade |
-| `cnn_model/cnn_train_32x3.py` | Training entry point: 4 targets, SMOTE auto-load, `--conditioned` (ground-truth cascade), `--cascade_predicted` (predicted-parent cascade). Its plain-training path (`load_split`) globs PNGs directly too -- always worked on residual dirs even before the SMOTE/predict fixes above |
+| `cnn_model/cnn_train_32x3.py` | Training entry point: 4 targets, SMOTE auto-load, `--conditioned`/`--cascade_predicted` (feed_coarse **or roughness** cascade), `--kfold N` (stratified CV instead of one fixed split). Reports run-level accuracy two ways: hard majority vote and soft probability-averaging |
 | `pca_analysis_32x3.py` | 7-plot PCA diagnostic suite. Reads column names/count from `selected_scales.json`, so it works unmodified on either pipeline (not run on residual dirs -- those have no `run_features_raw.npz` either, and residual-correcting is a training-time concern, not a feature-space one) |
 | `run_sweep_32xN.ps1` | Trains all 4 targets x 4 backbones x 2 LRs x with/without SMOTE, across both layouts and both window variants (256 runs) -- loop-based |
-| `run_sweep_cascade.ps1` | feed_coarse cascade sweep: ground-truth `--conditioned` + the full speed/doc -> predict -> `--cascade_predicted` chain (136 runs) -- loop-based |
-| `run_sweep_residual.ps1` | Same grid as `run_sweep_32xN.ps1` but for the 8 residual-corrected dirs (roughness x 4 dirs, feed_coarse x 4 dirs) + ground-truth `--conditioned` on the feed_coarse residual dirs (160 runs) -- loop-based |
+| `run_sweep_cascade.ps1` | Cascade sweep for feed_coarse (on `_feedopt` dirs) AND roughness (on base dirs): ground-truth `--conditioned` + the full speed/doc -> predict -> `--cascade_predicted` chain (272 runs) -- loop-based |
+| `run_sweep_residual.ps1` | Same grid as `run_sweep_32xN.ps1` but for the 8 residual-corrected dirs (roughness x 4 dirs, feed_coarse x 4 dirs) + ground-truth `--conditioned` for BOTH targets' residual dirs (192 runs) -- loop-based |
 | `run_sweep_32xN_detailed.ps1` | The same 256 commands as `run_sweep_32xN.ps1`, spelled out one line each (no loops) -- for reading/auditing/copy-pasting individual lines |
-| `run_sweep_cascade_detailed.ps1` | The same 136 commands as `run_sweep_cascade.ps1`, spelled out flat |
-| `run_sweep_residual_detailed.ps1` | The same 160 commands as `run_sweep_residual.ps1`, spelled out flat |
-| `run_everything_detailed.ps1` | All 552 commands from the three `_detailed.ps1` files above, concatenated into one file/one run |
+| `run_sweep_cascade_detailed.ps1` | The same 272 commands as `run_sweep_cascade.ps1`, spelled out flat |
+| `run_sweep_residual_detailed.ps1` | The same 192 commands as `run_sweep_residual.ps1`, spelled out flat |
+| `run_everything_detailed.ps1` | All 720 commands from the three `_detailed.ps1` files above, concatenated into one file/one run |
 
 The `_detailed.ps1` files and the loop-based files run the identical grid --
 pick whichever you'd rather work with. The detailed ones are plain
@@ -171,13 +171,13 @@ Loop-based (compact, same grid):
 cd "End Milling"
 
 powershell -File run_sweep_32xN.ps1       # plain training: 256 runs
-powershell -File run_sweep_cascade.ps1    # feed_coarse cascade: 136 runs
-powershell -File run_sweep_residual.ps1   # residual-corrected: 160 runs
+powershell -File run_sweep_cascade.ps1    # feed_coarse + roughness cascade: 272 runs
+powershell -File run_sweep_residual.ps1   # residual-corrected: 192 runs
 ```
 
-Or the flat, fully-spelled-out equivalents (every one of the 552 commands
+Or the flat, fully-spelled-out equivalents (every one of the 720 commands
 visible, nothing hidden behind a loop) -- either run each phase separately
-or run all 552 in one shot:
+or run all 720 in one shot:
 
 ```bash
 cd "End Milling"
@@ -194,6 +194,41 @@ Every `_detailed.ps1` file is plain `python ...` lines (with just a 2-line
 PowerShell header), grouped under `#` section comments per target/layout/
 window-variant -- open any of them if you just want to read or copy-paste
 the commands rather than run the file.
+
+`--kfold` is deliberately NOT part of any sweep script -- running full CV
+across every arch/lr/smote/target/layout combo (5x the already-large grid)
+isn't worth it as a blanket default. Run it standalone per target/config you
+actually want to trust, e.g.:
+
+```bash
+python cnn_model/cnn_train_32x3.py --target roughness --img_dir scalograms_32x3_residual_roughness --arch resnet50 --kfold 5
+python cnn_model/cnn_train_32x3.py --target speed     --img_dir scalograms_32x3_speedopt           --arch resnet18 --kfold 5
+python cnn_model/cnn_train_32x3.py --target feed_coarse --img_dir scalograms_32x3_feedopt_9win_residual --arch resnet50 --kfold 5
+python cnn_model/cnn_train_32x3.py --target doc       --img_dir scalograms_32x3_docopt             --arch resnet18 --kfold 5
+```
+
+## Three additions from the first results round
+
+The first full sweep's results (256+136+160 runs) prompted three follow-ups,
+all now implemented in `cnn_model/cnn_train_32x3.py`:
+
+1. **Soft (probability-averaging) run-level accuracy**, reported alongside
+   the existing hard majority vote for every training run, no flag needed.
+   Saved in each run's history JSON as `run_level_soft_acc` (majority vote
+   stays `run_level_acc`, unchanged, so `predict_conditioning_32x3.py`'s
+   best-model selection is unaffected).
+2. **Cascade conditioning extended to roughness**, not just feed_coarse
+   (`COND_PARENTS` now covers both). Roughness shares feed_coarse's exact
+   DOC x speed nuisance covariate -- it's the reason residual correction
+   helps both -- so it was always a legitimate cascade candidate; it just
+   hadn't been tried. `run_sweep_cascade.ps1`/`run_sweep_residual.ps1` (and
+   their detailed counterparts) now cover it.
+3. **`--kfold N`**: stratified N-fold CV instead of one fixed split, reusing
+   cnn_train.py's own `stratified_kfold`/`load_smote_full`/`smote_for_fold`.
+   Plain training only (not compatible with cascade flags). This is the
+   check for whether any given number is trustworthy or just a lucky/
+   unlucky split -- see Shoulder Milling's own feed-rate story in the module
+   docstring for why this matters.
 
 ## Open questions to check once trained
 

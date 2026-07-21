@@ -41,13 +41,17 @@ see cnn_train.py's load_smote_cond_map) if present -- run
 ../smote_generate_32x3.py first. --no_smote skips loading them.
 
 Cascade conditioning:
-  --conditioned          feed_coarse only. Conditions on GROUND-TRUTH speed +
-                         doc labels (a shortcut -- the model is told the real
-                         answer for the parent tasks). Useful as an upper
-                         bound / sanity check.
-  --cascade_predicted    feed_coarse only. Conditions on PREDICTED speed + doc
-                         labels from speed_pred_<scalo_tag>[...].csv and
-                         doc_pred_<scalo_tag>[...].csv, written by
+  --conditioned          feed_coarse or roughness. Conditions on GROUND-TRUTH
+                         speed + doc labels (a shortcut -- the model is told
+                         the real answer for the parent tasks). Useful as an
+                         upper bound / sanity check. Both targets share the
+                         same DOC x speed nuisance covariate that motivates
+                         condition-residual correction in the first place
+                         (see build_residual_scalograms.py's docstring), so
+                         both are legitimate cascade candidates.
+  --cascade_predicted    feed_coarse or roughness. Conditions on PREDICTED
+                         speed + doc labels from speed_pred_<scalo_tag>[...]
+                         .csv and doc_pred_<scalo_tag>[...].csv, written by
                          ../predict_conditioning_32x3.py after training and
                          selecting best speed/doc models. This is the
                          leakage-honest cascade -- the analogue of Shoulder
@@ -57,10 +61,32 @@ Cascade conditioning:
                          upstream speed/doc prediction to attach).
   Only one of --conditioned / --cascade_predicted may be set.
 
+Cross-validation:
+  --kfold N (N>1)        Stratified N-fold CV (folds built by cnn_train.py's
+                         stratified_kfold(), same method its own --kfold
+                         support uses) instead of the single fixed train/test
+                         split -- reports mean/std run-level accuracy across
+                         folds. This is the leakage-honest, "does this number
+                         actually hold up" check Shoulder Milling's writeup
+                         emphasizes (their ad-hoc single-split numbers for
+                         feed were later shown inflated; only the CV number
+                         -- 87.5% -- was trustworthy). Plain training only
+                         (not compatible with --conditioned/--cascade_predicted).
+
+Evaluation:
+  Run-level accuracy is reported two ways: hard MAJORITY VOTE (argmax per
+  window, then mode across a run's windows -- the original metric) and soft
+  PROBABILITY AVERAGING (average per-window softmax probabilities across a
+  run's windows, then argmax once). Averaging can recover runs where the
+  vote is split near-evenly; End Milling's own README shows this pattern
+  helping in several cases for the original CWT pipeline.
+
 Usage examples:
     python cnn_train_32x3.py --target roughness --img_dir ../scalograms_32x3 --arch resnet18 --lr 1e-3
     python cnn_train_32x3.py --target feed_coarse --img_dir ../scalograms_32x3_feedopt --arch convnext_tiny --conditioned
+    python cnn_train_32x3.py --target roughness --img_dir ../scalograms_32x3_residual_roughness --conditioned
     python cnn_train_32x3.py --target feed_coarse --img_dir ../scalograms_32x3_feedopt --cascade_predicted
+    python cnn_train_32x3.py --target speed --img_dir ../scalograms_32x3_speedopt --arch resnet18 --kfold 5
 """
 import argparse
 import json
@@ -86,6 +112,7 @@ from cnn_train import (   # noqa: E402  (repo-local import, path set above)
     RA_LABELS, RA_NAMES, RA_TEST_RUNS, RA_TEST_RUNS_12,
     ScalogramDataset, ConditionedScalogramDataset,
     load_split, load_split_conditioned, load_smote_map, load_smote_cond_map,
+    stratified_kfold, load_smote_full, smote_for_fold,
 )
 
 SEED = 42
@@ -124,9 +151,13 @@ TARGETS = {
 # separately validated here.
 DEFAULT_DROPOUT = {"speed": 0.0, "doc": 0.15, "feed_coarse": 0.15, "roughness": 0.15}
 
-# End Milling's cascade shape is fixed: feed_coarse conditions jointly on
-# BOTH speed and doc (never a subset) -- see cnn_train.py's ConditionedResNet.
-COND_PARENTS = {"feed_coarse": ["speed", "doc"]}
+# End Milling's cascade shape is fixed: a cascading target conditions
+# jointly on BOTH speed and doc (never a subset) -- see cnn_train.py's
+# ConditionedResNet. feed_coarse and roughness both qualify: both share the
+# DOC x speed nuisance covariate condition-residual correction targets (see
+# build_residual_scalograms.py's docstring) -- speed/doc themselves don't,
+# since they already hit ~100% on raw features with nothing to cascade from.
+COND_PARENTS = {"feed_coarse": ["speed", "doc"], "roughness": ["speed", "doc"]}
 COND_DIMS    = {"speed": 5, "doc": 3}
 
 
@@ -360,8 +391,138 @@ def majority_vote_accuracy_cond(model, paths, labels, run_ids, cond_labels_list,
     return _vote(all_preds, labels, run_ids)
 
 
+def _soft_vote(all_probs, labels, run_ids):
+    """Averages per-window softmax probabilities within each run, then
+    argmaxes once -- an alternative to _vote()'s hard majority vote that can
+    recover runs where the window-level vote is split near-evenly (a run
+    with e.g. 5/9 windows for the wrong class still hard-votes wrong, but
+    might average to the right class if the margins are close)."""
+    run_probs, run_true = {}, {}
+    for prob, true, run in zip(all_probs, labels, run_ids):
+        run_probs.setdefault(run, []).append(prob)
+        run_true[run] = true
+    correct = 0
+    vote_preds, vote_true = [], []
+    for run in run_true:
+        avg_prob = torch.stack(run_probs[run]).mean(dim=0)
+        pred = int(avg_prob.argmax().item())
+        vote_preds.append(pred)
+        vote_true.append(run_true[run])
+        if pred == run_true[run]:
+            correct += 1
+    return correct / len(run_true), vote_preds, vote_true
+
+
+@torch.no_grad()
+def soft_vote_accuracy(model, paths, labels, run_ids, val_tf, device):
+    model.eval()
+    ds = ScalogramDataset(paths, labels, val_tf)
+    dl = DataLoader(ds, batch_size=16, shuffle=False, num_workers=0)
+    all_probs = []
+    for imgs, _ in dl:
+        probs = torch.softmax(model(imgs.to(device)), dim=1).cpu()
+        all_probs.extend(probs.unbind(0))
+    return _soft_vote(all_probs, labels, run_ids)
+
+
+@torch.no_grad()
+def soft_vote_accuracy_cond(model, paths, labels, run_ids, cond_labels_list, val_tf, device):
+    model.eval()
+    ds = ConditionedScalogramDataset(paths, labels, cond_labels_list[0], cond_labels_list[1], val_tf)
+    dl = DataLoader(ds, batch_size=16, shuffle=False, num_workers=0)
+    all_probs = []
+    for imgs, _lbls, spd, doc in dl:
+        probs = torch.softmax(model(imgs.to(device), spd.to(device), doc.to(device)), dim=1).cpu()
+        all_probs.extend(probs.unbind(0))
+    return _soft_vote(all_probs, labels, run_ids)
+
+
 def run_ids_from_paths(paths):
     return [Path(p).stem.split("_w")[0] for p in paths]
+
+
+def run_kfold(args, spec, img_dir, scalo_tag, device, dropout, train_tf, val_tf):
+    """Stratified N-fold CV: same stratified_kfold() method cnn_train.py's own
+    --kfold uses. Plain (non-cascade) training only -- trains a fresh model
+    per fold, reports window-level and BOTH run-level (majority-vote,
+    soft-vote) accuracy, mean/std across folds. This is what actually tells
+    you whether a single-fixed-split number is trustworthy or a lucky/
+    unlucky split -- see the module docstring's Shoulder Milling caveat."""
+    smote_full = {} if args.no_smote else load_smote_full(img_dir, spec["smote_csv"])
+    splits = stratified_kfold(spec["label_map"], args.kfold)
+
+    fold_win_accs, fold_vote_accs, fold_soft_accs = [], [], []
+    for fold_i, (fold_train, fold_test) in enumerate(splits, 1):
+        print(f"\n{'=' * 60}\nFold {fold_i}/{args.kfold}  "
+              f"train={len(fold_train)} runs  test={len(fold_test)} runs")
+        fold_smote = smote_for_fold(smote_full, fold_train) if smote_full else {}
+        if fold_smote:
+            print(f"  SMOTE: {len(fold_smote)} synthetic runs valid for this fold "
+                  f"(both parents in train)")
+
+        (tr_p, tr_l), (te_p, te_l) = load_split(img_dir, spec["label_map"], fold_test, fold_smote)
+        if not tr_p or not te_p:
+            print("  Skipping fold -- empty train or test split")
+            continue
+
+        train_ds = ScalogramDataset(tr_p, tr_l, train_tf)
+        test_ds = ScalogramDataset(te_p, te_l, val_tf)
+        train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=0)
+        test_dl = DataLoader(test_ds, batch_size=args.batch, shuffle=False, num_workers=0)
+
+        model = build_model(args.arch, spec["num_classes"], dropout=dropout).to(device)
+        counts = np.bincount(tr_l, minlength=spec["num_classes"]).astype(float)
+        counts[counts == 0] = 1.0
+        weights = torch.tensor(1.0 / counts, dtype=torch.float32).to(device)
+        weights = weights / weights.sum()
+        criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=args.label_smooth)
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+
+        best_fold_win_acc, best_state = 0.0, None
+        for epoch in range(1, args.epochs + 1):
+            train_epoch(model, train_dl, criterion, optimizer, device)
+            _, te_acc, _, _ = eval_epoch(model, test_dl, criterion, device)
+            scheduler.step()
+            if te_acc > best_fold_win_acc:
+                best_fold_win_acc = te_acc
+                best_state = {k: v.clone() for k, v in model.state_dict().items()}
+
+        model.load_state_dict(best_state)
+        te_run_ids = run_ids_from_paths(te_p)
+        vote_acc, _, _ = majority_vote_accuracy(model, te_p, te_l, te_run_ids, val_tf, device)
+        soft_acc, _, _ = soft_vote_accuracy(model, te_p, te_l, te_run_ids, val_tf, device)
+
+        print(f"  Fold {fold_i} result: window acc={best_fold_win_acc:.3f}  "
+              f"run majority-vote acc={vote_acc:.3f}  run soft-vote acc={soft_acc:.3f}")
+        fold_win_accs.append(best_fold_win_acc)
+        fold_vote_accs.append(vote_acc)
+        fold_soft_accs.append(soft_acc)
+
+    print(f"\n{'=' * 60}")
+    print(f"K-fold ({args.kfold}) results across {len(fold_win_accs)} folds:")
+    print(f"  Window acc            : mean={np.mean(fold_win_accs):.3f}  std={np.std(fold_win_accs):.3f}")
+    print(f"  Run majority-vote acc : mean={np.mean(fold_vote_accs):.3f}  std={np.std(fold_vote_accs):.3f}")
+    print(f"  Run soft-vote acc     : mean={np.mean(fold_soft_accs):.3f}  std={np.std(fold_soft_accs):.3f}")
+
+    out_dir = HERE / f"models_{args.target}_{scalo_tag}"
+    out_dir.mkdir(exist_ok=True)
+    kfold_path = out_dir / f"{args.arch}_lr{args.lr:g}_kfold{args.kfold}_results.json"
+    with open(kfold_path, "w") as f:
+        json.dump({
+            "target": args.target, "img_dir": str(img_dir), "arch": args.arch,
+            "kfold": args.kfold, "epochs": args.epochs, "lr": args.lr,
+            "smote": not args.no_smote, "dropout": dropout,
+            "fold_window_acc": [round(a, 4) for a in fold_win_accs],
+            "fold_run_vote_acc": [round(a, 4) for a in fold_vote_accs],
+            "fold_run_soft_acc": [round(a, 4) for a in fold_soft_accs],
+            "mean_window_acc": round(float(np.mean(fold_win_accs)), 4),
+            "mean_run_vote_acc": round(float(np.mean(fold_vote_accs)), 4),
+            "std_run_vote_acc": round(float(np.std(fold_vote_accs)), 4),
+            "mean_run_soft_acc": round(float(np.mean(fold_soft_accs)), 4),
+            "std_run_soft_acc": round(float(np.std(fold_soft_accs)), 4),
+        }, f, indent=2)
+    print(f"\nK-fold results saved to {kfold_path}")
 
 
 def main():
@@ -389,16 +550,22 @@ def main():
     parser.add_argument("--split", default="standard", choices=["standard", "balanced"],
                         help="Which *_TEST_RUNS set from cnn_train.py to use")
     parser.add_argument("--conditioned", action="store_true",
-                        help="feed_coarse only: condition on GROUND-TRUTH speed+doc")
+                        help="feed_coarse/roughness only: condition on GROUND-TRUTH speed+doc")
     parser.add_argument("--cascade_predicted", action="store_true",
-                        help="feed_coarse only: condition on PREDICTED speed+doc "
+                        help="feed_coarse/roughness only: condition on PREDICTED speed+doc "
                              "(run predict_conditioning_32x3.py for both first)")
+    parser.add_argument("--kfold", type=int, default=1,
+                        help="Stratified N-fold CV (1=single fixed split, N>1=N-fold). "
+                             "Not compatible with --conditioned/--cascade_predicted.")
     args = parser.parse_args()
 
     if args.conditioned and args.cascade_predicted:
         raise SystemExit("Pass only one of --conditioned / --cascade_predicted")
-    if (args.conditioned or args.cascade_predicted) and args.target != "feed_coarse":
-        raise SystemExit("--conditioned / --cascade_predicted only apply to --target feed_coarse")
+    if (args.conditioned or args.cascade_predicted) and args.target not in COND_PARENTS:
+        raise SystemExit(f"--conditioned / --cascade_predicted only apply to "
+                          f"--target in {list(COND_PARENTS.keys())}")
+    if args.kfold > 1 and (args.conditioned or args.cascade_predicted):
+        raise SystemExit("--kfold is not compatible with --conditioned/--cascade_predicted")
 
     dropout = args.dropout if args.dropout is not None else DEFAULT_DROPOUT[args.target]
     seed_everything(SEED)
@@ -417,6 +584,11 @@ def main():
     print(f"Arch      : {args.arch}   LR: {args.lr}   Dropout: {dropout}   Split: {args.split}")
 
     train_tf, val_tf = build_transforms(args.noise_std)
+
+    if args.kfold > 1:
+        print(f"K-fold CV : {args.kfold} folds (stratified)")
+        run_kfold(args, spec, img_dir, scalo_tag, device, dropout, train_tf, val_tf)
+        return
 
     cascading = args.conditioned or args.cascade_predicted
     if cascading:
@@ -515,15 +687,22 @@ def main():
     if cascading:
         run_acc, vote_preds, vote_true = majority_vote_accuracy_cond(
             model, te_p, te_l, te_run_ids, [te_spd, te_doc], val_tf, device)
+        soft_acc, soft_preds, soft_true = soft_vote_accuracy_cond(
+            model, te_p, te_l, te_run_ids, [te_spd, te_doc], val_tf, device)
     else:
         run_acc, vote_preds, vote_true = majority_vote_accuracy(model, te_p, te_l, te_run_ids, val_tf, device)
+        soft_acc, soft_preds, soft_true = soft_vote_accuracy(model, te_p, te_l, te_run_ids, val_tf, device)
 
     print(f"\nBest window-level test acc : {best_acc:.3f}  (epoch {best_epoch})")
     print(f"Run-level majority vote acc: {run_acc:.3f}  "
           f"({int(round(run_acc * len(set(te_run_ids))))}/{len(set(te_run_ids))} runs)")
+    print(f"Run-level soft (prob-avg) acc: {soft_acc:.3f}  "
+          f"({int(round(soft_acc * len(set(te_run_ids))))}/{len(set(te_run_ids))} runs)")
     class_name_list = [spec["class_names"][c] for c in sorted(spec["class_names"])]
-    print("\nPer-class report (run-level, best model):")
+    print("\nPer-class report (run-level majority vote, best model):")
     print(classification_report(vote_true, vote_preds, target_names=class_name_list, zero_division=0))
+    print("\nPer-class report (run-level soft/prob-avg, best model):")
+    print(classification_report(soft_true, soft_preds, target_names=class_name_list, zero_division=0))
 
     hist_path = out_dir / f"{tag}_history.json"
     with open(hist_path, "w") as f:
@@ -535,7 +714,8 @@ def main():
             "run_tag": args.run_tag, "conditioned": args.conditioned,
             "cascade_predicted": args.cascade_predicted, "split": args.split,
             "best_window_acc": round(best_acc, 4), "best_epoch": best_epoch,
-            "run_level_acc": round(run_acc, 4), "history": history,
+            "run_level_acc": round(run_acc, 4), "run_level_soft_acc": round(soft_acc, 4),
+            "history": history,
         }, f, indent=2)
     print(f"\nHistory saved to {hist_path}")
 
