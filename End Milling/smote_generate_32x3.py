@@ -1,10 +1,12 @@
 """
-Generates and persists synthetic SMOTE training samples for the End Milling
-32x3 feature-image pipeline (scalograms_32x3/, scalograms_32x3_feedopt/, and
-their _9win variants) -- mirrors Shoulder Milling's smote_generate_param.py,
-adapted to End Milling's whole-RUN synthesis convention (a "sample" here is
-one dataset run, made of --n_windows window images that all share one label,
-not a single window image in isolation).
+Generates and persists synthetic SMOTE training samples for End Milling's
+precomputed-feature scalogram pipelines -- scalograms_32x3*/scalograms_32x12*
+(base, _feedopt, _9win, and combinations) -- mirrors Shoulder Milling's
+smote_generate_param.py, adapted to End Milling's whole-RUN synthesis
+convention (a "sample" here is one dataset run, made of --n_windows window
+images that all share one label, not a single window image in isolation).
+Column-count-agnostic (reads it from the arrays themselves), so the same
+script serves both the 3-column and 12-column pipelines with no flag needed.
 
 Why whole-run, not per-window (unlike Shoulder Milling)
 --------------------------------------------------------
@@ -115,15 +117,15 @@ def load_run_vectors(img_dir: Path, train_runs: set, n_windows: int):
     return np.stack(vecs).astype(np.float32), runs
 
 
-def split_vector_into_windows(vec: np.ndarray, block_sizes: list) -> list:
-    """Inverse of load_run_vectors' concatenation: splits a flat 96-length
-    vector back into its n_windows (rows_k, 3) blocks using the same
-    row-block sizes every run shares."""
+def split_vector_into_windows(vec: np.ndarray, block_sizes: list, n_cols: int) -> list:
+    """Inverse of load_run_vectors' concatenation: splits a flat
+    (32*n_cols)-length vector back into its n_windows (rows_k, n_cols)
+    blocks using the same row-block sizes every run shares."""
     windows = []
     offset = 0
     for size in block_sizes:
-        n_vals = size * 3
-        windows.append(vec[offset:offset + n_vals].reshape(size, 3))
+        n_vals = size * n_cols
+        windows.append(vec[offset:offset + n_vals].reshape(size, n_cols))
         offset += n_vals
     return windows
 
@@ -197,7 +199,8 @@ def generate_for(img_dir: Path, target: str, n_windows: int, mod, rng):
     # Re-derive the same column-wise normalisation constants used when the
     # real PNGs were quantized, so synthetic images are saved consistently.
     all_windows = np.load(img_dir / "features_raw.npz")
-    all_flat = np.concatenate([all_windows[k].reshape(-1, 3) for k in all_windows.files])
+    n_cols = all_windows[all_windows.files[0]].shape[-1]
+    all_flat = np.concatenate([all_windows[k].reshape(-1, n_cols) for k in all_windows.files])
     mu, sig = all_flat.mean(axis=0), all_flat.std(axis=0)
     sig[sig < 1e-10] = 1.0
 
@@ -206,7 +209,7 @@ def generate_for(img_dir: Path, target: str, n_windows: int, mod, rng):
     doc_map = mod.DOC_LABELS
     for i, (vec, lbl, pa, pb) in enumerate(zip(syn_vecs, syn_labels, parent_a, parent_b)):
         synth_run = f"smote{target}{i:03d}"
-        windows = split_vector_into_windows(vec, block_sizes)
+        windows = split_vector_into_windows(vec, block_sizes, n_cols)
         for k in range(n_windows):
             img_u8 = quantize_like_real(windows[k], mu, sig)
             Image.fromarray(img_u8).save(img_dir / f"{synth_run}_w{k}.png")

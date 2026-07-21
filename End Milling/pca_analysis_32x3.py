@@ -1,6 +1,9 @@
 """
-PCA analysis of End Milling's 32x3 (FFT / Mexican-hat CWT / Coiflet CWT)
-feature matrices -- mirrors Shoulder Milling's pca_analysis.py.
+PCA analysis of End Milling's precomputed-feature scalogram matrices --
+mirrors Shoulder Milling's pca_analysis.py. Works for either pipeline: pass
+--img_dir pointing at a scalograms_32x3* (FFT/mexican/coif, 3 columns) or
+scalograms_32x12* (all 12 feature columns) directory -- the column names and
+count are read from that directory's selected_scales.json, not hardcoded.
 
 Difference from Shoulder Milling's version
 --------------------------------------------
@@ -36,19 +39,29 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
 ROOT = Path(__file__).parent
-FEATURE_COLS = ["FFT", "Mexican", "Coiflet"]
 N_ROWS = 32
 
 
-def load_dataset(img_dir: Path):
-    """Returns (X [45, 96] float, per_run DataFrame indexed by run, one row
-    each -- since every window of a run shares the same run-level labels)."""
+def load_feature_cols(img_dir: Path) -> list:
+    """Reads the column names/count this directory's builder actually used
+    (["FFT","Mexican","Coiflet"] for scalograms_32x3*, the full 12-name list
+    for scalograms_32x12*) from selected_scales.json -- written by
+    build_32x3_features.py / build_32x12_features.py via em_feature_common
+    .write_dataset()."""
+    with open(img_dir / "selected_scales.json") as f:
+        return json.load(f)["feature_cols"]
+
+
+def load_dataset(img_dir: Path, n_cols: int):
+    """Returns (X [45, 32*n_cols] float, per_run DataFrame indexed by run,
+    one row each -- since every window of a run shares the same run-level
+    labels)."""
     df = pd.read_csv(img_dir / "labels.csv")
     per_run = df.drop_duplicates(subset="run").set_index("run").sort_index(
         key=lambda idx: idx.map(lambda r: int(r[3:])))
     npz = np.load(img_dir / "run_features_raw.npz")
     runs = list(per_run.index)
-    X = np.stack([npz[r] for r in runs]).reshape(len(runs), -1)   # (45, 96)
+    X = np.stack([npz[r] for r in runs]).reshape(len(runs), -1)   # (45, 32*n_cols)
     return X, runs, per_run
 
 
@@ -83,12 +96,13 @@ def main():
     out_dir = ROOT / f"pca_plots_{img_dir.name}"
     out_dir.mkdir(exist_ok=True)
 
+    feature_cols = load_feature_cols(img_dir)
     print(f"Loading {img_dir.name} ...")
-    X, runs, per_run = load_dataset(img_dir)
+    X, runs, per_run = load_dataset(img_dir, len(feature_cols))
     target_val = continuous_value(args.target, per_run)
     classes = np.array([class_names_for(args.target, per_run.loc[r]) for r in runs])
     print(f"  Loaded {X.shape[0]} runs, {X.shape[1]}-dim feature vector each "
-          f"({N_ROWS} rows x {len(FEATURE_COLS)} cols)")
+          f"({N_ROWS} rows x {len(feature_cols)} cols)")
     print(f"  Target ({args.target}) range: {target_val.min():.3f} - {target_val.max():.3f}  "
           f"mean={target_val.mean():.3f}")
 
@@ -153,20 +167,20 @@ def main():
     fig.savefig(out_dir / "3_pc1_pc2_continuous.png", dpi=150)
     plt.close(fig)
 
-    # ═══ Plot 4 — loading heatmaps PC1-4, reshaped (32, 3) ═════════════════
+    # ═══ Plot 4 — loading heatmaps PC1-4, reshaped (32, n_cols) ════════════
     n_pcs = 4
     fig, axes = plt.subplots(1, n_pcs, figsize=(4 * n_pcs, 6))
     for pc_idx, ax in enumerate(axes):
-        loading = pca.components_[pc_idx].reshape(N_ROWS, len(FEATURE_COLS))
+        loading = pca.components_[pc_idx].reshape(N_ROWS, len(feature_cols))
         vmax = np.abs(loading).max()
         im = ax.imshow(loading, aspect="auto", cmap="RdBu_r", vmin=-vmax, vmax=vmax, origin="upper")
         ax.set_title(f"PC{pc_idx + 1} ({ev[pc_idx] * 100:.1f}%)")
         ax.set_xlabel("Feature column")
         ax.set_ylabel("Selected scale row")
-        ax.set_xticks(range(len(FEATURE_COLS)))
-        ax.set_xticklabels(FEATURE_COLS, rotation=45, fontsize=8)
+        ax.set_xticks(range(len(feature_cols)))
+        ax.set_xticklabels(feature_cols, rotation=45, fontsize=8)
         plt.colorbar(im, ax=ax, fraction=0.05)
-    fig.suptitle(f"PC loadings reshaped to ({N_ROWS} rows x {len(FEATURE_COLS)} cols)", y=1.02)
+    fig.suptitle(f"PC loadings reshaped to ({N_ROWS} rows x {len(feature_cols)} cols)", y=1.02)
     fig.tight_layout()
     fig.savefig(out_dir / "4_loading_heatmaps.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -187,16 +201,17 @@ def main():
 
     # ═══ Plot 6 — column importance (top-5 PCs, variance-weighted) ═════════
     n_top = 5
-    col_importance = np.zeros(len(FEATURE_COLS))
+    col_importance = np.zeros(len(feature_cols))
     for pc_idx in range(min(n_top, pca.n_components_)):
-        loading = pca.components_[pc_idx].reshape(N_ROWS, len(FEATURE_COLS))
+        loading = pca.components_[pc_idx].reshape(N_ROWS, len(feature_cols))
         col_importance += ev[pc_idx] * np.abs(loading).sum(axis=0)
 
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.bar(FEATURE_COLS, col_importance, color=["steelblue", "forestgreen", "darkorange"])
+    fig, ax = plt.subplots(figsize=(max(6, len(feature_cols)), 4))
+    ax.bar(feature_cols, col_importance, color=plt.cm.tab20.colors[:len(feature_cols)])
     ax.set_xlabel("Feature column")
     ax.set_ylabel(f"Sum |loading| x variance (top {n_top} PCs)")
     ax.set_title(f"Feature column importance via PCA ({img_dir.name})")
+    ax.tick_params(axis="x", rotation=45)
     fig.tight_layout()
     fig.savefig(out_dir / "6_column_importance.png", dpi=150)
     plt.close(fig)
@@ -204,25 +219,21 @@ def main():
     # ═══ Plot 7 — row importance (selected scale rows) ═════════════════════
     row_importance = np.zeros(N_ROWS)
     for pc_idx in range(min(n_top, pca.n_components_)):
-        loading = pca.components_[pc_idx].reshape(N_ROWS, len(FEATURE_COLS))
+        loading = pca.components_[pc_idx].reshape(N_ROWS, len(feature_cols))
         row_importance += ev[pc_idx] * np.abs(loading).sum(axis=1)
 
-    sel_path = img_dir / "selected_scales.json"
-    row_labels = None
-    if sel_path.exists():
-        with open(sel_path) as f:
-            sel = json.load(f)
-        row_labels = sel["selected_indices"]   # original 0-63 scale index for each of the 32 rows
+    with open(img_dir / "selected_scales.json") as f:
+        sel = json.load(f)
+    row_labels = sel["selected_indices"]   # original 0-63 scale index for each of the 32 rows
 
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.bar(range(N_ROWS), row_importance, color="steelblue", alpha=0.85)
-    ax.set_xlabel("Row index within the selected 32x3 image"
-                  + ("  (label = original 0-63 CWT scale index)" if row_labels else ""))
+    ax.set_xlabel(f"Row index within the selected {N_ROWS}x{len(feature_cols)} image"
+                  "  (label = original 0-63 CWT scale index)")
     ax.set_ylabel(f"Sum |loading| x variance (top {n_top} PCs)")
     ax.set_title(f"Row-index importance via PCA ({img_dir.name}, target={args.target})")
-    if row_labels:
-        ax.set_xticks(range(N_ROWS))
-        ax.set_xticklabels(row_labels, rotation=90, fontsize=6)
+    ax.set_xticks(range(N_ROWS))
+    ax.set_xticklabels(row_labels, rotation=90, fontsize=6)
     fig.tight_layout()
     fig.savefig(out_dir / "7_row_importance.png", dpi=150)
     plt.close(fig)
@@ -230,9 +241,9 @@ def main():
     # ── summary ──────────────────────────────────────────────────────────
     print("\n-- Column importance (variance-weighted, top-5 PCs) --")
     for i in np.argsort(col_importance)[::-1]:
-        print(f"  {FEATURE_COLS[i]:10s}: {col_importance[i]:.4f}")
+        print(f"  {feature_cols[i]:12s}: {col_importance[i]:.4f}")
 
-    print("\n-- Top-10 most important rows (row index within the 32x3 image) --")
+    print(f"\n-- Top-10 most important rows (row index within the {N_ROWS}x{len(feature_cols)} image) --")
     for r in np.argsort(row_importance)[::-1][:10]:
         label = f" (orig scale {row_labels[r]})" if row_labels else ""
         print(f"  Row {r:2d}{label}: {row_importance[r]:.4f}")
