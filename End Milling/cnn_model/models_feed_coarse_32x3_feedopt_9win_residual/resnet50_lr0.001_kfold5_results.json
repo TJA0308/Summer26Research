@@ -1,0 +1,36 @@
+{
+  "target": "feed_coarse",
+  "img_dir": "scalograms_32x3_feedopt_9win_residual",
+  "arch": "resnet50",
+  "kfold": 5,
+  "epochs": 50,
+  "lr": 0.001,
+  "smote": true,
+  "dropout": 0.15,
+  "fold_window_acc": [
+    0.6111,
+    0.4568,
+    0.6049,
+    0.4691,
+    0.5694
+  ],
+  "fold_run_vote_acc": [
+    0.8,
+    0.4444,
+    0.6667,
+    0.5556,
+    0.625
+  ],
+  "fold_run_soft_acc": [
+    0.9,
+    0.4444,
+    0.6667,
+    0.4444,
+    0.5
+  ],
+  "mean_window_acc": 0.5423,
+  "mean_run_vote_acc": 0.6183,
+  "std_run_vote_acc": 0.118,
+  "mean_run_soft_acc": 0.5911,
+  "std_run_soft_acc": 0.1746
+}

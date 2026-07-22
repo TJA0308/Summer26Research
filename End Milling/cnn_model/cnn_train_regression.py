@@ -1,11 +1,18 @@
 """
-Feed rate regression: predict feed class index with MSE loss.
+Feed rate regression/ordinal training with MSE loss.
 Supports feed (6-class, 0-5) and feed_coarse (3-class, 0-2).
 Evaluated by MAE and within-1 accuracy.
 
+Loss options:
+  mse      -- standard MSE on scalar output
+  wmse     -- inverse-frequency weighted MSE
+  ordinal  -- cumulative threshold (CORN-style): predict K-1 binary
+               thresholds P(y>0)...P(y>K-2), decode by summing sigmoids
+
 Usage:
     python cnn_model/cnn_train_regression.py --img_dir scalograms_10w_residual_feed --kfold 5
-    python cnn_model/cnn_train_regression.py --img_dir scalograms_10w_residual --target feed_coarse --kfold 5
+    python cnn_model/cnn_train_regression.py --img_dir scalograms_10w_residual_feed --loss ordinal --kfold 5
+    python cnn_model/cnn_train_regression.py --img_dir scalograms_10w_residual_feed --loss wmse --backbone convnext_tiny --epochs 80
 """
 import argparse
 import sys
@@ -14,6 +21,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 from torchvision import models, transforms
 from PIL import Image
@@ -57,20 +65,23 @@ def build_transforms(augment="light"):
     return transforms.Compose(train), transforms.Compose(base)
 
 
-def build_model(backbone, freeze=False):
-    """Return backbone with 1-output regression head."""
+def build_model(backbone, num_outputs=1, freeze=False):
+    """Return backbone with num_outputs head (1 for mse/wmse, K-1 for ordinal)."""
+    def _head(in_f):
+        return nn.Linear(in_f, num_outputs)
+
     if backbone == "resnet18":
         m = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-        m.fc = nn.Linear(m.fc.in_features, 1)
+        m.fc = _head(m.fc.in_features)
     elif backbone == "resnet50":
         m = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
-        m.fc = nn.Linear(m.fc.in_features, 1)
+        m.fc = _head(m.fc.in_features)
     elif backbone == "efficientnet_b0":
         m = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
-        m.classifier[1] = nn.Linear(m.classifier[1].in_features, 1)
+        m.classifier[1] = _head(m.classifier[1].in_features)
     elif backbone == "convnext_tiny":
         m = models.convnext_tiny(weights=models.ConvNeXt_Tiny_Weights.DEFAULT)
-        m.classifier[2] = nn.Linear(m.classifier[2].in_features, 1)
+        m.classifier[2] = _head(m.classifier[2].in_features)
     else:
         raise ValueError(f"Unsupported backbone: {backbone}")
     if freeze:
@@ -80,14 +91,38 @@ def build_model(backbone, freeze=False):
     return m
 
 
-def train_epoch(model, loader, optimizer, device):
+def ordinal_encode(labels, num_classes):
+    """Convert class indices to cumulative binary targets (K-1,)."""
+    k = num_classes - 1
+    targets = torch.zeros(len(labels), k)
+    for i, lbl in enumerate(labels):
+        targets[i, :int(lbl.item())] = 1.0
+    return targets
+
+
+def ordinal_decode(logits):
+    """Sum sigmoid outputs to get soft class prediction in [0, K-1]."""
+    return torch.sigmoid(logits).sum(dim=1)
+
+
+def train_epoch(model, loader, optimizer, device, loss_type, class_weights, num_classes):
     model.train()
-    criterion = nn.MSELoss()
     total_loss, n = 0.0, 0
     for imgs, targets in loader:
         imgs, targets = imgs.to(device), targets.to(device)
-        out = model(imgs).squeeze(1)
-        loss = criterion(out, targets)
+
+        if loss_type == "ordinal":
+            ot = ordinal_encode(targets, num_classes).to(device)
+            logits = model(imgs)  # (B, K-1)
+            loss = F.binary_cross_entropy_with_logits(logits, ot, reduction="mean")
+        else:
+            out = model(imgs).squeeze(1)
+            if loss_type == "wmse" and class_weights is not None:
+                w = class_weights[targets.long()]
+                loss = (w * (out - targets) ** 2).mean()
+            else:
+                loss = F.mse_loss(out, targets)
+
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -97,17 +132,25 @@ def train_epoch(model, loader, optimizer, device):
 
 
 @torch.no_grad()
-def eval_epoch(model, loader, device, max_class=5):
+def eval_epoch(model, loader, device, loss_type, num_classes):
     model.eval()
-    criterion = nn.MSELoss()
-    total_loss, abs_err, within1, n = 0.0, 0.0, 0, 0
+    abs_err, within1, n = 0.0, 0, 0
     preds_all, targets_all = [], []
+    total_loss = 0.0
     for imgs, targets in loader:
         imgs, targets = imgs.to(device), targets.to(device)
-        out = model(imgs).squeeze(1)
-        loss = criterion(out, targets)
+
+        if loss_type == "ordinal":
+            ot = ordinal_encode(targets, num_classes).to(device)
+            logits = model(imgs)
+            loss = F.binary_cross_entropy_with_logits(logits, ot, reduction="mean")
+            out = ordinal_decode(logits)
+        else:
+            out = model(imgs).squeeze(1)
+            loss = F.mse_loss(out, targets)
+
         total_loss += loss.item() * len(targets)
-        rounded = out.round().clamp(0, max_class)
+        rounded = out.round().clamp(0, num_classes - 1)
         abs_err += (out - targets).abs().sum().item()
         within1 += (rounded - targets).abs().le(1).sum().item()
         n += len(targets)
@@ -144,19 +187,25 @@ def main():
     parser.add_argument("--kfold",    type=int,   default=5)
     parser.add_argument("--augment",  default="light", choices=["none", "light"])
     parser.add_argument("--freeze",   action="store_true")
+    parser.add_argument("--loss",     default="mse", choices=["mse", "wmse", "ordinal"],
+                        help="mse=standard, wmse=weighted MSE, ordinal=cumulative thresholds")
+    parser.add_argument("--tag",      default="",
+                        help="Extra tag appended to saved model filenames")
     args = parser.parse_args()
 
     seed_everything(SEED)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tag = f"_{args.tag}" if args.tag else f"_{args.loss}_{args.backbone}"
     print(f"Device: {device}")
-    print(f"Config: backbone={args.backbone}  lr={args.lr}  wd={args.wd}"
-          f"  batch={args.batch}  epochs={args.epochs}  kfold={args.kfold}")
+    print(f"Config: backbone={args.backbone}  loss={args.loss}  lr={args.lr}  wd={args.wd}"
+          f"  batch={args.batch}  epochs={args.epochs}  kfold={args.kfold}  tag={tag}")
 
     if args.target == "feed_coarse":
         label_map, class_names, num_classes = FEED_COARSE_LABELS, FEED_COARSE_NAMES, 3
     else:
         label_map, class_names, num_classes = FEED_LABELS, FEED_NAMES, 6
 
+    num_outputs = 1 if args.loss != "ordinal" else (num_classes - 1)
     img_dir = Path(args.img_dir)
     train_tf, val_tf = build_transforms(args.augment)
 
@@ -172,56 +221,60 @@ def main():
             print("No training images, skipping."); continue
 
         for c, name in class_names.items():
-            n_tr = tr_l.count(c); n_te = te_l.count(c)
-            print(f"  class {c} ({name}): {n_tr} train / {n_te} test")
+            print(f"  class {c} ({name}): {tr_l.count(c)} train / {te_l.count(c)} test")
+
+        # Class weights for wmse
+        counts = np.bincount(tr_l, minlength=num_classes).astype(np.float32)
+        weights = torch.tensor(1.0 / np.maximum(counts, 1)).to(device)
+        weights = weights / weights.sum() * num_classes
 
         train_ds = PNGDataset(tr_p, tr_l, train_tf)
         test_ds  = PNGDataset(te_p, te_l, val_tf)
         train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True,  num_workers=0)
         test_dl  = DataLoader(test_ds,  batch_size=args.batch, shuffle=False, num_workers=0)
 
-        model = build_model(args.backbone, freeze=args.freeze).to(device)
+        model = build_model(args.backbone, num_outputs=num_outputs, freeze=args.freeze).to(device)
         optimizer = torch.optim.AdamW(
             filter(lambda p: p.requires_grad, model.parameters()),
             lr=args.lr, weight_decay=args.wd)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
-        print(f"\n{'Epoch':>5} {'Train MSE':>10} {'Test MSE':>10} {'MAE':>8} {'Within-1':>10}")
-        print("-" * 50)
+        print(f"\n{'Epoch':>5} {'Train Loss':>11} {'Test Loss':>10} {'MAE':>8} {'Within-1':>10}")
+        print("-" * 52)
 
         best_mae = float("inf")
         best_w1  = 0.0
         best_preds, best_targets = [], []
-        save_path = f"best_regression_{args.target}_fold{fi}.pt"
+        save_path = f"best_regression_{args.target}{tag}_fold{fi}.pt"
 
         for epoch in range(1, args.epochs + 1):
-            tr_mse = train_epoch(model, train_dl, optimizer, device)
-            te_mse, mae, w1, preds, targets = eval_epoch(model, test_dl, device, max_class=num_classes - 1)
+            tr_loss = train_epoch(model, train_dl, optimizer, device,
+                                  args.loss, weights, num_classes)
+            te_loss, mae, w1, preds, targets = eval_epoch(model, test_dl, device,
+                                                           args.loss, num_classes)
             scheduler.step()
             if mae < best_mae:
                 best_mae = mae
                 best_w1  = w1
                 best_preds, best_targets = preds, targets
                 torch.save(model.state_dict(), save_path)
-            print(f"{epoch:>5} {tr_mse:>10.4f} {te_mse:>10.4f} {mae:>8.3f} {w1:>10.3f}", flush=True)
+            print(f"{epoch:>5} {tr_loss:>11.4f} {te_loss:>10.4f} {mae:>8.3f} {w1:>10.3f}", flush=True)
 
         fold_maes.append(best_mae)
         fold_w1s.append(best_w1)
         print(f"\nFold {fi} best: MAE={best_mae:.3f}  Within-1={best_w1:.3f}  saved -> {save_path}")
 
-        # Per-class breakdown
         print(f"\nPer-class results (best MAE model, fold {fi}):")
         for c, name in class_names.items():
             idx = [i for i, t in enumerate(best_targets) if round(t) == c]
             if not idx:
                 print(f"  class {c} ({name}): no test samples"); continue
-            preds_c  = [best_preds[i] for i in idx]
-            mae_c    = np.mean([abs(p - c) for p in preds_c])
-            exact    = sum(round(p) == c for p in preds_c)
-            within1  = sum(abs(round(p) - c) <= 1 for p in preds_c)
-            pred_str = [f"{p:.1f}" for p in preds_c[:8]]
-            print(f"  class {c} ({name}): exact={exact}/{len(idx)}  w1={within1}/{len(idx)}"
-                  f"  MAE={mae_c:.2f}  preds={pred_str}")
+            preds_c = [best_preds[i] for i in idx]
+            mae_c   = np.mean([abs(p - c) for p in preds_c])
+            exact   = sum(round(p) == c for p in preds_c)
+            w1c     = sum(abs(round(p) - c) <= 1 for p in preds_c)
+            print(f"  class {c} ({name}): exact={exact}/{len(idx)}  w1={w1c}/{len(idx)}"
+                  f"  MAE={mae_c:.2f}  preds={[f'{p:.1f}' for p in preds_c[:8]]}")
 
     print(f"\n{'='*56}")
     print(f"K-fold ({args.kfold}) MAE:      {[f'{m:.3f}' for m in fold_maes]}")

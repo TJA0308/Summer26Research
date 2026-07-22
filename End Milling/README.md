@@ -542,3 +542,80 @@ model_roughness.pt        Best surface roughness model (83.3%)
 ```
 
 See `cnn_model/README.md` for full detail on training options, per-class results, and why feed rate is harder to classify than speed or DOC.
+
+---
+
+## Precomputed-Feature Scalogram Pipeline (32×3 / 32×12)
+
+A second pipeline built from the **precomputed per-run feature spreadsheets**
+(`data/STLMILAE_DOC{015,03,06}.xlsx`) rather than raw waveforms. Features:
+32 FFT bins, 64 Mexican-hat CWT scales, 64 Coiflet CWT scales, DWT statistics.
+
+### Image layouts
+
+| Dir suffix | Description |
+|---|---|
+| `scalograms_32x3` | 32×3: FFT col + 2 CWT cols, scales selected by roughness correlation |
+| `scalograms_32x3_feedopt` | Same, scales selected by feed rate correlation |
+| `scalograms_32x3_speedopt` | Same, scales selected by speed correlation |
+| `scalograms_32x3_docopt` | Same, scales selected by DOC correlation |
+| `scalograms_32x12` | 32×12: all 12 feature columns |
+| `*_9win` | Row-split into 9 pseudo-windows instead of 3 |
+| `*_residual*` | Residual-corrected (group-mean subtracted per speed/DOC combination) |
+
+Builders: `build_32x3_features.py`, `build_32x12_features.py`, `build_residual_scalograms.py`.
+
+### Training
+
+```powershell
+# Plain
+python cnn_model/cnn_train_32x3.py --target speed --img_dir scalograms_32x3_speedopt --arch resnet18 --lr 1e-3
+
+# Cascade (conditioned on predicted feed rate)
+python cnn_model/cnn_train_32x3.py --target feed_coarse --img_dir scalograms_32x3_feedopt --arch resnet50 --lr 1e-3 --conditioned
+python predict_conditioning_32x3.py --target feed_coarse --img_dir scalograms_32x3_feedopt
+python cnn_model/cnn_train_32x3.py --target speed --img_dir scalograms_32x3_feedopt --arch resnet18 --lr 1e-3 --cascade_predicted
+
+# K-fold CV
+python cnn_model/cnn_train_32x3.py --target roughness --img_dir scalograms_32x12_residual_roughness --arch resnet50 --kfold 5
+
+# Full sweeps
+powershell -File run_everything_detailed.ps1        # 552 commands
+powershell -File run_sweep_32xN_detailed.ps1        # 256 plain runs
+powershell -File run_sweep_cascade_detailed.ps1     # 272 cascade runs
+powershell -File run_sweep_residual_detailed.ps1    # 192 residual runs
+powershell -File run_sweep_speedopt_docopt.ps1      # 128 speedopt/docopt runs
+```
+
+### Best results — single train/test split (70/30 by run)
+
+| Target | Approach | Run acc | Win acc | Model |
+|---|---|---|---|---|
+| Speed | Feedopt cascade layout | **86.7%** | 64.4% | convnext_tiny / scalograms_32x12_feedopt / LR=1e-4 |
+| DOC | Docopt scale selection | **83.3%** | 80.6% | resnet18 / scalograms_32x3_docopt / LR=1e-3 |
+| Feed coarse | Residual + cascade | **83.3%** | 69.4% | resnet50 / scalograms_32x3_feedopt_9win_residual / conditioned |
+| Roughness | Residual correction | **83.3%** | 83.3% | convnext_tiny / scalograms_32x3 / conditioned |
+
+### K-fold CV results (5-fold stratified) — honest generalisation estimate
+
+| Target | Model | Run majority-vote | Run soft-vote | Window acc |
+|---|---|---|---|---|
+| Speed | resnet18 / scalograms_32x12_feedopt | 0.700 ± 0.089 | **0.740 ± 0.080** | 0.640 ± 0.077 |
+| DOC | resnet18 / scalograms_32x3_docopt | 0.756 ± 0.163 | 0.756 ± 0.163 | 0.719 ± 0.136 |
+| Feed coarse | resnet50 / scalograms_32x3_feedopt_9win_residual | 0.618 ± 0.118 | 0.591 ± 0.175 | 0.542 ± 0.066 |
+| Roughness | resnet50 / scalograms_32x12_residual_roughness | **0.719 ± 0.087** | 0.719 ± 0.087 | 0.698 ± 0.054 |
+
+K-fold JSON files: `cnn_model/models_<target>_<dir>/<arch>_lr<lr>_kfold5_results.json`
+
+### Why results are lower than the raw time series pipeline
+
+- **No genuine windowing:** the 3 or 9 windows per run are row-splits of a single
+  pre-computed feature matrix, not independent time segments. Effective sample size
+  is 45 runs regardless of window count.
+- **Pre-summarised features:** FFT and CWT values were computed over the full run
+  before being stored in Excel — the time axis is already gone.
+- **Scale selection mismatch:** CWT scales were historically selected by roughness/feed
+  correlation; speedopt/docopt variants were added but the improvement was marginal.
+- **Path forward:** locate the raw `stlml_1`–`stlml_45` signal files (recorded at
+  16,393 Hz, ~65,000 samples/run) and rebuild scalograms with genuine temporal
+  windowing to recover 90%+ speed accuracy.
