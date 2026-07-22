@@ -53,17 +53,28 @@ def convert_stml_to_csv(input_file, output_file):
     print(f"Converted: {input_file} -> {output_file}")
 
 def main():
-    """Convert all STML files from stlml_10.txt to stlml_45.txt"""
+    """Convert all 45 STML files to run1.csv-run45.csv, per README.md's
+    run/stlml mapping table:
+      stlml_10-45  -> run1-run36   (run_number = i - 9)
+      stlml_1-9    -> run37-run45  (run_number = i + 36)
+    The second range was missing originally -- README's table shows
+    run37-39=stlml_1-3, run40-42=stlml_4-6, run43-45=stlml_7-9, i.e.
+    stlml_1 -> run37, ..., stlml_9 -> run45."""
     data_dir = Path('data')
-    
-    # Process files from stlml_10.txt to stlml_45.txt
-    for i in range(10, 46):  # 10 to 45 inclusive
+
+    for i in range(10, 46):  # stlml_10..45 -> run1..36
         stml_file = data_dir / f'stlml_{i}.txt'
-        
-        # Calculate output file number (run1 for stlml_10, run2 for stlml_11, etc.)
-        run_number = i - 9  # 10 -> 1, 11 -> 2, ..., 45 -> 36
+        run_number = i - 9
         output_file = data_dir / f'run{run_number}.csv'
-        
+        if stml_file.exists():
+            convert_stml_to_csv(str(stml_file), str(output_file))
+        else:
+            print(f"File not found: {stml_file}")
+
+    for i in range(1, 10):  # stlml_1..9 -> run37..45
+        stml_file = data_dir / f'stlml_{i}.txt'
+        run_number = i + 36
+        output_file = data_dir / f'run{run_number}.csv'
         if stml_file.exists():
             convert_stml_to_csv(str(stml_file), str(output_file))
         else:
