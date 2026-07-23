@@ -175,21 +175,30 @@ def predict_hgb(train_arrays, train_labels, test_arrays, seed):
     return pipe.predict_proba(Xte)
 
 
-def predict_residual_hgb(train_arrays, train_labels, train_conditions, test_arrays, seed):
-    """Condition-prototype subtraction HGB, computed PER FOLD (see module
-    docstring). Training: for each window subtract the mean of all training
-    windows sharing the same (DOC, speed) condition. Test: subtract the
-    mean of ALL test windows for this fold (the held-out condition's own
-    windows) -- unsupervised, no labels used."""
+def _subtract_condition_means(arrays_raw, conditions):
+    """Groups rows of arrays_raw by `conditions` (one entry per row) and
+    subtracts each group's own mean -- unsupervised, no labels used. Works
+    identically whether given a training partition (many conditions) or a
+    single held-out LOCO fold (one repeated condition) or a fixed test split
+    (however many distinct conditions happen to appear in it)."""
+    out = np.empty_like(arrays_raw)
+    for cond in set(conditions):
+        mask = np.array([c == cond for c in conditions])
+        out[mask] = arrays_raw[mask] - arrays_raw[mask].mean(axis=0)
+    return out
+
+
+def predict_residual_hgb(train_arrays, train_labels, train_conditions, test_arrays,
+                          test_conditions, seed):
+    """Condition-prototype subtraction HGB, computed PER FOLD/SPLIT (see
+    module docstring). Both train and test windows have their own
+    condition's mean subtracted, using only windows visible within that same
+    partition -- unsupervised, no labels used, no cross-partition leakage."""
     Xtr_raw = np.stack([a.reshape(-1) for a in train_arrays]).astype(np.float64)
     Xte_raw = np.stack([a.reshape(-1) for a in test_arrays]).astype(np.float64)
 
-    Xtr = np.empty_like(Xtr_raw)
-    for cond in set(train_conditions):
-        mask = np.array([c == cond for c in train_conditions])
-        Xtr[mask] = Xtr_raw[mask] - Xtr_raw[mask].mean(axis=0)
-
-    Xte = Xte_raw - Xte_raw.mean(axis=0)
+    Xtr = _subtract_condition_means(Xtr_raw, train_conditions)
+    Xte = _subtract_condition_means(Xte_raw, test_conditions)
 
     n_components = min(20, Xtr.shape[0] - 1)
     pipe = Pipeline([
@@ -234,8 +243,32 @@ def load_window_index(img_dir: Path):
     return entries
 
 
+def build_folds(split: str, label_map: dict, condition_of: dict, spec: dict):
+    """Returns a list of (train_runs, test_runs) partitions.
+    'loco'     -- 15 folds, one per (DOC, speed) condition left out (default,
+                  what the module docstring's methodology is built around).
+    'standard' -- ONE fixed fold, using this target's existing fixed
+                  train/test split (TARGETS[target]['test_runs_standard'],
+                  the same split cnn_train_32x3.py's non-kfold path uses) --
+                  the Shoulder-Milling-style single-split comparison point,
+                  analogous to baseline_classical.py's fixed split rather
+                  than cv_evaluate.py's leave-one-side-out CV."""
+    if split == "loco":
+        conditions = sorted(set(condition_of.values()))
+        return [
+            (set(label_map.keys()) - {r for r, c in condition_of.items() if c == cond},
+             {r for r, c in condition_of.items() if c == cond})
+            for cond in conditions
+        ]
+    if split == "standard":
+        test_runs = set(spec["test_runs_standard"]) & set(label_map.keys())
+        train_runs = set(label_map.keys()) - test_runs
+        return [(train_runs, test_runs)]
+    raise ValueError(split)
+
+
 def run_cv(img_dir: Path, target: str, model_name: str, seed: int, epochs: int, batch: int,
-           lr: float, noise_std: float, device, mod):
+           lr: float, noise_std: float, device, mod, split: str):
     spec = mod.TARGETS[target]
     label_map = spec["label_map"]
     num_classes = spec["num_classes"]
@@ -245,8 +278,8 @@ def run_cv(img_dir: Path, target: str, model_name: str, seed: int, epochs: int, 
         raise FileNotFoundError(f"No run*_w*.png files found in {img_dir}")
 
     condition_of = {run: (mod.DOC_LABELS[run], mod.SPEED_LABELS[run]) for run in label_map}
-    conditions = sorted(set(condition_of.values()))
-    print(f"  {len(conditions)} (DOC, speed) conditions, {len(label_map)} runs, "
+    folds = build_folds(split, label_map, condition_of, spec)
+    print(f"  split={split}  {len(folds)} fold(s), {len(label_map)} runs, "
           f"{len(entries)} window images")
 
     all_arrays = {}
@@ -254,24 +287,26 @@ def run_cv(img_dir: Path, target: str, model_name: str, seed: int, epochs: int, 
         all_arrays[(run, window)] = np.asarray(Image.open(p).convert("L"), dtype=np.float32)
 
     all_probs, all_labels, all_runs = [], [], []
-    for cond in conditions:
-        test_runs = {r for r, c in condition_of.items() if c == cond}
-        train_runs = set(condition_of.keys()) - test_runs
-
+    for train_runs, test_runs in folds:
         train_entries = [(r, w) for r, w, _ in entries if r in train_runs]
         test_entries  = [(r, w) for r, w, _ in entries if r in test_runs]
+        if not train_entries or not test_entries:
+            print(f"  Skipping fold -- empty train or test partition")
+            continue
 
         train_arrays = [all_arrays[e] for e in train_entries]
         test_arrays  = [all_arrays[e] for e in test_entries]
         train_labels = np.array([label_map[r] for r, w in train_entries])
         test_labels  = np.array([label_map[r] for r, w in test_entries])
         train_conditions = [condition_of[r] for r, w in train_entries]
+        test_conditions  = [condition_of[r] for r, w in test_entries]
         test_runs_list = [r for r, w in test_entries]
 
         if model_name == "hgb":
             probs = predict_hgb(train_arrays, train_labels, test_arrays, seed)
         elif model_name == "residual_hgb":
-            probs = predict_residual_hgb(train_arrays, train_labels, train_conditions, test_arrays, seed)
+            probs = predict_residual_hgb(train_arrays, train_labels, train_conditions,
+                                          test_arrays, test_conditions, seed)
         elif model_name == "tiny_cnn":
             model, val_tf = train_tiny_cnn(train_arrays, train_labels, num_classes, epochs, batch,
                                             lr, noise_std, seed, device, mod.seed_everything,
@@ -296,6 +331,11 @@ def main():
     parser.add_argument("--img_dir", required=True)
     parser.add_argument("--target", required=True,
                         choices=["speed", "doc", "feed_coarse", "roughness"])
+    parser.add_argument("--split", default="loco", choices=["loco", "standard"],
+                        help="'loco': 15-fold leave-one-condition-out (default). "
+                             "'standard': one fixed train/test split (this target's "
+                             "existing TEST_RUNS set), for comparison against the "
+                             "fixed-split CNN sweep numbers -- no leave-one-out.")
     parser.add_argument("--models", nargs="+", default=["hgb", "tiny_cnn"],
                         choices=["hgb", "tiny_cnn", "residual_hgb"])
     parser.add_argument("--seeds", type=int, nargs="+", default=[42])
@@ -311,22 +351,23 @@ def main():
 
     mod = _load_cnn_train_32x3_module()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}   Scalogram: {img_dir.name}   Target: {args.target}   "
-          f"15-fold leave-one-condition-out")
+    split_desc = "15-fold leave-one-condition-out" if args.split == "loco" else \
+                 "single fixed train/test split (no leave-one-out)"
+    print(f"Device: {device}   Scalogram: {img_dir.name}   Target: {args.target}   {split_desc}")
 
     rows = []
     for model_name in args.models:
         for seed in args.seeds:
             window_acc, run_hard, run_soft, n_runs = run_cv(
                 img_dir, args.target, model_name, seed, args.epochs, args.batch, args.lr,
-                args.noise_std, device, mod,
+                args.noise_std, device, mod, args.split,
             )
             print(f"  {model_name:14s} seed={seed:<4d} window_acc={window_acc:.3f}  "
                   f"run_acc_hard={run_hard:.3f}  run_acc_soft={run_soft:.3f}  "
                   f"(pooled over {n_runs} runs)")
             rows.append({
                 "target": args.target, "img_dir": img_dir.name, "model": model_name,
-                "seed": seed, "window_acc": round(window_acc, 4),
+                "split": args.split, "seed": seed, "window_acc": round(window_acc, 4),
                 "run_acc_hard": round(run_hard, 4), "run_acc_soft": round(run_soft, 4),
                 "n_runs": n_runs,
             })
@@ -334,13 +375,16 @@ def main():
     out = pd.DataFrame(rows)
     out_path = ROOT / "cv_summary.csv"
     if out_path.exists():
-        out = pd.concat([pd.read_csv(out_path), out], ignore_index=True)
+        prev = pd.read_csv(out_path)
+        if "split" not in prev.columns:
+            prev["split"] = "loco"   # all pre-existing rows predate --split, were LOCO-only
+        out = pd.concat([prev, out], ignore_index=True)
     out.to_csv(out_path, index=False)
     print(f"\nWrote {len(rows)} rows -> {out_path.name}")
 
     print("\n--- Mean +/- std across seeds ---")
-    for (target, img_name, model), g in out.groupby(["target", "img_dir", "model"]):
-        print(f"  {target:<12s} {img_name:<40s} {model:<14s} n={len(g)}  "
+    for (target, img_name, model, split), g in out.groupby(["target", "img_dir", "model", "split"]):
+        print(f"  {target:<12s} {img_name:<40s} {model:<14s} {split:<10s} n={len(g)}  "
               f"window={g['window_acc'].mean():.3f}+/-{g['window_acc'].std():.3f}  "
               f"run_hard={g['run_acc_hard'].mean():.3f}+/-{g['run_acc_hard'].std():.3f}  "
               f"run_soft={g['run_acc_soft'].mean():.3f}+/-{g['run_acc_soft'].std():.3f}")
