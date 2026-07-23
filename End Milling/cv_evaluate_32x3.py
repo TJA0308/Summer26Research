@@ -121,6 +121,8 @@ from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
+import cond_prior
+
 ROOT = Path(__file__).parent
 
 
@@ -255,15 +257,8 @@ def predict_residual_hgb(train_arrays, train_labels, train_conditions, test_arra
     return pipe.predict_proba(Xte)
 
 
-def _condition_onehot(conditions):
-    """(DOC, speed) tuples -> concatenated one-hot [3-way DOC, 5-way speed]."""
-    docs = np.array([c[0] for c in conditions])
-    speeds = np.array([c[1] for c in conditions])
-    return np.hstack([np.eye(3)[docs], np.eye(5)[speeds]])
-
-
 def predict_cond_stack(train_arrays, train_labels, train_conditions, test_arrays,
-                        test_conditions, seed, cond_weight=0.7, use_residual=True):
+                        test_conditions, num_classes, seed, cond_weight=0.7, use_residual=True):
     """Probability-average of predict_cond_only and predict_hgb/residual_hgb,
     rather than flat feature concatenation (cond_hgb/cond_residual_hgb) --
     tried because concatenation let HGB's tree splits get distracted by noisy
@@ -271,28 +266,30 @@ def predict_cond_stack(train_arrays, train_labels, train_conditions, test_arrays
     signal (see cv_summary.csv: cond_hgb/cond_residual_hgb score below
     cond_only alone, both targets). Averaging probabilities keeps the two
     signal sources from interfering with each other's decision boundaries."""
-    cond_probs = predict_cond_only(train_labels, train_conditions, test_conditions, seed)
+    cond_probs = predict_cond_only(train_labels, train_conditions, test_conditions, num_classes, seed)
     if use_residual:
         pixel_probs = predict_residual_hgb(train_arrays, train_labels, train_conditions,
                                             test_arrays, test_conditions, seed)
     else:
         pixel_probs = predict_hgb(train_arrays, train_labels, test_arrays, seed)
-    return cond_weight * cond_probs + (1 - cond_weight) * pixel_probs
+    return cond_prior.stack_probs(cond_probs, pixel_probs, cond_weight)
 
 
-def predict_cond_only(train_labels, train_conditions, test_conditions, seed):
+def predict_cond_only(train_labels, train_conditions, test_conditions, num_classes, seed):
     """Condition-only baseline: NO image data at all -- just the (DOC, speed)
     one-hot -> HGB. Quantifies how much of feed_coarse/roughness is already
     explained by the machining condition alone (a KNOWN, controlled
     parameter, not something that needs to be inferred from vibration) --
     see cv_evaluate_32x3.py's module docstring addendum on why this matters
     here specifically (unlike Shoulder Milling, where feed is independent of
-    condition by design)."""
-    Xtr = _condition_onehot(train_conditions)
-    Xte = _condition_onehot(test_conditions)
-    clf = HistGradientBoostingClassifier(max_iter=150, random_state=seed)
-    clf.fit(Xtr, train_labels)
-    return clf.predict_proba(Xte)
+    condition by design). Delegates to cond_prior.py (shared with
+    stack_conditioning_32x3.py and cnn_train_32x3.py's main()), which also
+    fixes a latent width bug: HGB.predict_proba only emits columns for
+    classes present in this fold's train_labels, silently misaligning when
+    averaged against a full-width pixel-model output under LOCO/imbalanced
+    folds."""
+    clf, classes_ = cond_prior.fit_condition_prior(train_conditions, train_labels, num_classes, seed)
+    return cond_prior.predict_condition_prior(clf, classes_, test_conditions, num_classes)
 
 
 def predict_cond_hgb(train_arrays, train_labels, train_conditions, test_arrays,
@@ -318,8 +315,8 @@ def predict_cond_hgb(train_arrays, train_labels, train_conditions, test_arrays,
     Xtr_pca = pca.fit_transform(Xtr_scaled)
     Xte_pca = pca.transform(Xte_scaled)
 
-    Xtr = np.hstack([Xtr_pca, _condition_onehot(train_conditions)])
-    Xte = np.hstack([Xte_pca, _condition_onehot(test_conditions)])
+    Xtr = np.hstack([Xtr_pca, cond_prior.condition_onehot(train_conditions)])
+    Xte = np.hstack([Xte_pca, cond_prior.condition_onehot(test_conditions)])
 
     clf = HistGradientBoostingClassifier(max_iter=150, random_state=seed)
     clf.fit(Xtr, train_labels)
@@ -436,7 +433,7 @@ def run_cv(img_dir: Path, target: str, model_name: str, seed: int, epochs: int, 
             probs = predict_residual_hgb(train_arrays, train_labels, train_conditions,
                                           test_arrays, test_conditions, seed)
         elif model_name == "cond_only":
-            probs = predict_cond_only(train_labels, train_conditions, test_conditions, seed)
+            probs = predict_cond_only(train_labels, train_conditions, test_conditions, num_classes, seed)
         elif model_name == "cond_hgb":
             probs = predict_cond_hgb(train_arrays, train_labels, train_conditions,
                                       test_arrays, test_conditions, seed, use_residual=False)
@@ -445,7 +442,7 @@ def run_cv(img_dir: Path, target: str, model_name: str, seed: int, epochs: int, 
                                       test_arrays, test_conditions, seed, use_residual=True)
         elif model_name == "cond_stack":
             probs = predict_cond_stack(train_arrays, train_labels, train_conditions,
-                                        test_arrays, test_conditions, seed,
+                                        test_arrays, test_conditions, num_classes, seed,
                                         cond_weight=cond_weight, use_residual=stack_use_residual)
         elif model_name == "tiny_cnn":
             model, val_tf = train_tiny_cnn(train_arrays, train_labels, num_classes, epochs, batch,
