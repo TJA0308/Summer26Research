@@ -6,6 +6,51 @@ condition groups (see build_residual_scalograms.py's docstring: exactly 15
 groups of 3 runs each, one run per feed_coarse-adjacent point on the fine
 6-class feed scale).
 
+Why condition-residual correction doesn't transfer cleanly from Shoulder
+Milling, and what "cond_*" models do about it
+-----------------------------------------------------------------------
+Shoulder Milling's design holds exactly one run per feed class at every
+side, making feed conditionally independent of condition by construction --
+subtracting the per-condition mean removes ONLY the condition's DC offset,
+never the target's own signal (proven algebraically in
+residual_preprocessing_readme.md). End Milling's design does not have this
+property: feed_coarse is (empirically, checked directly against
+cnn_train.py's label maps) almost a clean function of SPEED ALONE, identical
+across all 3 DOC levels (e.g. speed=0 or 1 -> mostly class 0; speed=3 or 4 ->
+mostly class 2). Roughness is a smooth, monotonic function of (DOC, speed)
+jointly (DOC=0 is 100% one class; DOC=2 is 90%+ classes 1-2). In both cases
+the "nuisance condition" is not independent of the target -- it's *causally
+upstream* of it (feed scales with speed for chip-load reasons; roughness
+scales with depth for cutting-mechanics reasons). Subtracting the per-
+condition mean here removes real target signal along with the condition
+offset, which is why residual_hgb's LOCO numbers don't consistently beat
+plain hgb (see cv_summary.csv).
+
+Quantifying this: majority-vote-by-condition alone (a per-condition lookup
+table, ZERO vibration signal) gets 30/45=66.7% for feed_coarse and
+38/45=84.4% for roughness -- because DOC and speed are KNOWN, CONTROLLED
+machining parameters (you set them on the machine), not something that
+needs to be inferred from vibration. Three additional model options exploit
+this directly, evaluated under the same strict LOCO protocol (the held-out
+condition is never seen during training, so the model must generalize the
+speed/DOC -> target trend from the other 14 conditions, not memorize a
+per-condition table):
+  - "cond_only": HGB on the (DOC, speed) one-hot alone, NO image data --
+    sanity-checks how much of the LOCO-honest ceiling condition alone
+    achieves when the model must generalize the trend to an unseen
+    condition (may fall short of the naive 66.7%/84.4% lookup ceiling,
+    since that number assumes the condition is already in the lookup table).
+  - "cond_hgb": condition one-hot CONCATENATED (after PCA, so the low-
+    dimensional condition signal isn't diluted by ~100-400 pixel
+    dimensions) with the raw-pixel PCA components -- lets HGB use both the
+    condition trend AND whatever vibration signal helps disambiguate runs
+    that are the minority class within their condition.
+  - "cond_residual_hgb": same as cond_hgb, but pixels are condition-mean-
+    subtracted first (per fold, unsupervised) before PCA -- combines the
+    condition trend with the RESIDUAL (condition-signal-removed) vibration
+    features, rather than raw pixels that still contain the (now redundant,
+    since it's already in the one-hot) condition signal.
+
 Why this exists instead of just using cnn_train_32x3.py's --kfold
 ------------------------------------------------------------------
 1. cnn_train_32x3.py's checkpoint selection used to be test-accuracy-driven
@@ -210,6 +255,77 @@ def predict_residual_hgb(train_arrays, train_labels, train_conditions, test_arra
     return pipe.predict_proba(Xte)
 
 
+def _condition_onehot(conditions):
+    """(DOC, speed) tuples -> concatenated one-hot [3-way DOC, 5-way speed]."""
+    docs = np.array([c[0] for c in conditions])
+    speeds = np.array([c[1] for c in conditions])
+    return np.hstack([np.eye(3)[docs], np.eye(5)[speeds]])
+
+
+def predict_cond_stack(train_arrays, train_labels, train_conditions, test_arrays,
+                        test_conditions, seed, cond_weight=0.7, use_residual=True):
+    """Probability-average of predict_cond_only and predict_hgb/residual_hgb,
+    rather than flat feature concatenation (cond_hgb/cond_residual_hgb) --
+    tried because concatenation let HGB's tree splits get distracted by noisy
+    pixel PCA components, actively HURTING the otherwise-clean condition
+    signal (see cv_summary.csv: cond_hgb/cond_residual_hgb score below
+    cond_only alone, both targets). Averaging probabilities keeps the two
+    signal sources from interfering with each other's decision boundaries."""
+    cond_probs = predict_cond_only(train_labels, train_conditions, test_conditions, seed)
+    if use_residual:
+        pixel_probs = predict_residual_hgb(train_arrays, train_labels, train_conditions,
+                                            test_arrays, test_conditions, seed)
+    else:
+        pixel_probs = predict_hgb(train_arrays, train_labels, test_arrays, seed)
+    return cond_weight * cond_probs + (1 - cond_weight) * pixel_probs
+
+
+def predict_cond_only(train_labels, train_conditions, test_conditions, seed):
+    """Condition-only baseline: NO image data at all -- just the (DOC, speed)
+    one-hot -> HGB. Quantifies how much of feed_coarse/roughness is already
+    explained by the machining condition alone (a KNOWN, controlled
+    parameter, not something that needs to be inferred from vibration) --
+    see cv_evaluate_32x3.py's module docstring addendum on why this matters
+    here specifically (unlike Shoulder Milling, where feed is independent of
+    condition by design)."""
+    Xtr = _condition_onehot(train_conditions)
+    Xte = _condition_onehot(test_conditions)
+    clf = HistGradientBoostingClassifier(max_iter=150, random_state=seed)
+    clf.fit(Xtr, train_labels)
+    return clf.predict_proba(Xte)
+
+
+def predict_cond_hgb(train_arrays, train_labels, train_conditions, test_arrays,
+                      test_conditions, seed, use_residual):
+    """Condition one-hot CONCATENATED (after PCA, not before -- PCA is fit on
+    pixels only, so the low-dimensional condition signal doesn't get diluted
+    among ~100-400 pixel dimensions) with the (optionally residual-corrected)
+    pixel PCA components. Lets HGB use both: the strong condition->target
+    trend (see predict_cond_only) AND whatever additional vibration-derived
+    signal helps disambiguate the runs that are the minority class within
+    their condition."""
+    Xtr_raw = np.stack([a.reshape(-1) for a in train_arrays]).astype(np.float64)
+    Xte_raw = np.stack([a.reshape(-1) for a in test_arrays]).astype(np.float64)
+    if use_residual:
+        Xtr_raw = _subtract_condition_means(Xtr_raw, train_conditions)
+        Xte_raw = _subtract_condition_means(Xte_raw, test_conditions)
+
+    n_components = min(20, Xtr_raw.shape[0] - 1)
+    scaler = StandardScaler()
+    Xtr_scaled = scaler.fit_transform(Xtr_raw)
+    Xte_scaled = scaler.transform(Xte_raw)
+    pca = PCA(n_components=n_components, random_state=seed)
+    Xtr_pca = pca.fit_transform(Xtr_scaled)
+    Xte_pca = pca.transform(Xte_scaled)
+
+    Xtr = np.hstack([Xtr_pca, _condition_onehot(train_conditions)])
+    Xte = np.hstack([Xte_pca, _condition_onehot(test_conditions)])
+
+    clf = HistGradientBoostingClassifier(max_iter=150, random_state=seed)
+    clf.fit(Xtr, train_labels)
+    return clf.predict_proba(Xte)
+
+
 # ── voting + fold loop ──────────────────────────────────────────────────────────
 def vote(probs, labels, run_ids):
     """Returns (window_acc, run_acc_hard, run_acc_soft) from per-window softmax probs."""
@@ -243,16 +359,27 @@ def load_window_index(img_dir: Path):
     return entries
 
 
-def build_folds(split: str, label_map: dict, condition_of: dict, spec: dict):
+def build_folds(split: str, label_map: dict, condition_of: dict, spec: dict, mod=None, kfold_k=5):
     """Returns a list of (train_runs, test_runs) partitions.
-    'loco'     -- 15 folds, one per (DOC, speed) condition left out (default,
-                  what the module docstring's methodology is built around).
-    'standard' -- ONE fixed fold, using this target's existing fixed
-                  train/test split (TARGETS[target]['test_runs_standard'],
-                  the same split cnn_train_32x3.py's non-kfold path uses) --
-                  the Shoulder-Milling-style single-split comparison point,
-                  analogous to baseline_classical.py's fixed split rather
-                  than cv_evaluate.py's leave-one-side-out CV."""
+    'loco'       -- 15 folds, one per (DOC, speed) condition left out
+                    (default) -- tests generalization to a condition NEVER
+                    seen during training. The right question if production
+                    machining parameters can differ from every condition
+                    tested here.
+    'standard'   -- ONE fixed fold, using this target's existing fixed
+                    train/test split (TARGETS[target]['test_runs_standard']) --
+                    the Shoulder-Milling-style single-split comparison point.
+    'stratified' -- cnn_train.py's own stratified_kfold(): splits by CLASS,
+                    not by condition, so a test run's condition typically
+                    still appears (via its sibling runs) in the training
+                    set. Tests a different, easier, and often more relevant
+                    question: "can the model classify a new run from a
+                    condition it has already characterized" -- appropriate
+                    if production only ever revisits this same fixed set of
+                    (DOC, speed) combinations rather than needing to
+                    extrapolate to a brand new one."""
+    if split == "stratified":
+        return mod.stratified_kfold(label_map, kfold_k)
     if split == "loco":
         conditions = sorted(set(condition_of.values()))
         return [
@@ -268,7 +395,8 @@ def build_folds(split: str, label_map: dict, condition_of: dict, spec: dict):
 
 
 def run_cv(img_dir: Path, target: str, model_name: str, seed: int, epochs: int, batch: int,
-           lr: float, noise_std: float, device, mod, split: str):
+           lr: float, noise_std: float, device, mod, split: str, kfold_k: int = 5,
+           cond_weight: float = 0.7, stack_use_residual: bool = True):
     spec = mod.TARGETS[target]
     label_map = spec["label_map"]
     num_classes = spec["num_classes"]
@@ -278,7 +406,7 @@ def run_cv(img_dir: Path, target: str, model_name: str, seed: int, epochs: int, 
         raise FileNotFoundError(f"No run*_w*.png files found in {img_dir}")
 
     condition_of = {run: (mod.DOC_LABELS[run], mod.SPEED_LABELS[run]) for run in label_map}
-    folds = build_folds(split, label_map, condition_of, spec)
+    folds = build_folds(split, label_map, condition_of, spec, mod, kfold_k)
     print(f"  split={split}  {len(folds)} fold(s), {len(label_map)} runs, "
           f"{len(entries)} window images")
 
@@ -307,6 +435,18 @@ def run_cv(img_dir: Path, target: str, model_name: str, seed: int, epochs: int, 
         elif model_name == "residual_hgb":
             probs = predict_residual_hgb(train_arrays, train_labels, train_conditions,
                                           test_arrays, test_conditions, seed)
+        elif model_name == "cond_only":
+            probs = predict_cond_only(train_labels, train_conditions, test_conditions, seed)
+        elif model_name == "cond_hgb":
+            probs = predict_cond_hgb(train_arrays, train_labels, train_conditions,
+                                      test_arrays, test_conditions, seed, use_residual=False)
+        elif model_name == "cond_residual_hgb":
+            probs = predict_cond_hgb(train_arrays, train_labels, train_conditions,
+                                      test_arrays, test_conditions, seed, use_residual=True)
+        elif model_name == "cond_stack":
+            probs = predict_cond_stack(train_arrays, train_labels, train_conditions,
+                                        test_arrays, test_conditions, seed,
+                                        cond_weight=cond_weight, use_residual=stack_use_residual)
         elif model_name == "tiny_cnn":
             model, val_tf = train_tiny_cnn(train_arrays, train_labels, num_classes, epochs, batch,
                                             lr, noise_std, seed, device, mod.seed_everything,
@@ -331,13 +471,24 @@ def main():
     parser.add_argument("--img_dir", required=True)
     parser.add_argument("--target", required=True,
                         choices=["speed", "doc", "feed_coarse", "roughness"])
-    parser.add_argument("--split", default="loco", choices=["loco", "standard"],
-                        help="'loco': 15-fold leave-one-condition-out (default). "
-                             "'standard': one fixed train/test split (this target's "
-                             "existing TEST_RUNS set), for comparison against the "
-                             "fixed-split CNN sweep numbers -- no leave-one-out.")
+    parser.add_argument("--split", default="loco", choices=["loco", "standard", "stratified"],
+                        help="'loco': 15-fold leave-one-condition-out (default) -- tests "
+                             "generalization to an unseen condition. 'standard': one fixed "
+                             "train/test split (this target's existing TEST_RUNS set). "
+                             "'stratified': cnn_train.py's stratified_kfold -- splits by "
+                             "class, a test run's condition usually still appears in "
+                             "training via sibling runs (tests classifying a NEW RUN from "
+                             "an ALREADY-SEEN condition, not an unseen one).")
+    parser.add_argument("--kfold_k", type=int, default=5, help="'stratified' split only")
+    parser.add_argument("--cond_weight", type=float, default=0.7,
+                        help="cond_stack only: weight given to predict_cond_only's "
+                             "probabilities vs the pixel model's (1-cond_weight)")
+    parser.add_argument("--stack_pixel_model", default="residual_hgb",
+                        choices=["hgb", "residual_hgb"],
+                        help="cond_stack only: which pixel model to average with cond_only")
     parser.add_argument("--models", nargs="+", default=["hgb", "tiny_cnn"],
-                        choices=["hgb", "tiny_cnn", "residual_hgb"])
+                        choices=["hgb", "tiny_cnn", "residual_hgb", "cond_only",
+                                 "cond_hgb", "cond_residual_hgb", "cond_stack"])
     parser.add_argument("--seeds", type=int, nargs="+", default=[42])
     parser.add_argument("--epochs", type=int, default=30, help="tiny_cnn only")
     parser.add_argument("--batch", type=int, default=8, help="tiny_cnn only")
@@ -351,8 +502,9 @@ def main():
 
     mod = _load_cnn_train_32x3_module()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    split_desc = "15-fold leave-one-condition-out" if args.split == "loco" else \
-                 "single fixed train/test split (no leave-one-out)"
+    split_desc = {"loco": "15-fold leave-one-condition-out",
+                  "standard": "single fixed train/test split (no leave-one-out)",
+                  "stratified": f"{args.kfold_k}-fold stratified-by-class (conditions overlap train/test)"}[args.split]
     print(f"Device: {device}   Scalogram: {img_dir.name}   Target: {args.target}   {split_desc}")
 
     rows = []
@@ -360,7 +512,8 @@ def main():
         for seed in args.seeds:
             window_acc, run_hard, run_soft, n_runs = run_cv(
                 img_dir, args.target, model_name, seed, args.epochs, args.batch, args.lr,
-                args.noise_std, device, mod, args.split,
+                args.noise_std, device, mod, args.split, args.kfold_k,
+                args.cond_weight, args.stack_pixel_model == "residual_hgb",
             )
             print(f"  {model_name:14s} seed={seed:<4d} window_acc={window_acc:.3f}  "
                   f"run_acc_hard={run_hard:.3f}  run_acc_soft={run_soft:.3f}  "
