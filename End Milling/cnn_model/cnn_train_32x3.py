@@ -479,16 +479,15 @@ def run_kfold(args, spec, img_dir, scalo_tag, device, dropout, train_tf, val_tf)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
-        best_fold_win_acc, best_state = 0.0, None
         for epoch in range(1, args.epochs + 1):
             train_epoch(model, train_dl, criterion, optimizer, device)
             _, te_acc, _, _ = eval_epoch(model, test_dl, criterion, device)
             scheduler.step()
-            if te_acc > best_fold_win_acc:
-                best_fold_win_acc = te_acc
-                best_state = {k: v.clone() for k, v in model.state_dict().items()}
 
-        model.load_state_dict(best_state)
+        # Fixed-epoch-count result -- no test-accuracy-driven checkpoint
+        # selection (same leakage `cnn_train_32x3.py`'s main() path had; see
+        # Shoulder Milling/residual_preprocessing_readme.md's bias source #2).
+        best_fold_win_acc = te_acc
         te_run_ids = run_ids_from_paths(te_p)
         vote_acc, _, _ = majority_vote_accuracy(model, te_p, te_l, te_run_ids, val_tf, device)
         soft_acc, _, _ = soft_vote_accuracy(model, te_p, te_l, te_run_ids, val_tf, device)
@@ -664,7 +663,7 @@ def main():
     tag = f"{args.arch}_lr{args.lr:g}"
     if args.run_tag:
         tag += f"_{args.run_tag}"
-    best_acc, best_epoch, history = 0.0, 0, []
+    history = []
 
     print(f"\n{'Ep':>4}  {'TrLoss':>8}  {'TrAcc':>7}  {'TeLoss':>8}  {'TeAcc':>7}  {'TeF1':>6}")
     print("-" * 50)
@@ -674,15 +673,17 @@ def main():
         te_f1 = f1_score(te_lbls, te_preds, average="macro", zero_division=0)
         scheduler.step()
 
-        if te_acc > best_acc:
-            best_acc, best_epoch = te_acc, epoch
-            torch.save(model.state_dict(), out_dir / f"{tag}_best.pt")
-
         history.append({"epoch": epoch, "tr_loss": round(tr_loss, 4), "tr_acc": round(tr_acc, 4),
                          "te_loss": round(te_loss, 4), "te_acc": round(te_acc, 4), "te_f1": round(te_f1, 4)})
         print(f"{epoch:>4}  {tr_loss:>8.4f}  {tr_acc:>7.3f}  {te_loss:>8.4f}  {te_acc:>7.3f}  {te_f1:>6.3f}")
 
-    model.load_state_dict(torch.load(out_dir / f"{tag}_best.pt", map_location=device, weights_only=True))
+    # Fixed-epoch-count checkpoint -- no test-accuracy-driven selection (see
+    # Shoulder Milling/residual_preprocessing_readme.md's "Why the Old Numbers
+    # Were Misleading" #2: `if te_acc > best_acc: save` picks whichever epoch
+    # happened to fit THIS test split best, which is itself test-set leakage
+    # even though it looks like ordinary early stopping).
+    best_acc, best_epoch = te_acc, args.epochs
+    torch.save(model.state_dict(), out_dir / f"{tag}_best.pt")
     te_run_ids = run_ids_from_paths(te_p)
     if cascading:
         run_acc, vote_preds, vote_true = majority_vote_accuracy_cond(
