@@ -104,6 +104,7 @@ from torchvision import models, transforms
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent))   # repo root -- for cond_prior (below)
 
 from cnn_train import (   # noqa: E402  (repo-local import, path set above)
     SPEED_LABELS, SPEED_NAMES, SPEED_TEST_RUNS, SPEED_TEST_RUNS_BALANCED,
@@ -114,6 +115,7 @@ from cnn_train import (   # noqa: E402  (repo-local import, path set above)
     load_split, load_split_conditioned, load_smote_map, load_smote_cond_map,
     stratified_kfold, load_smote_full, smote_for_fold,
 )
+import cond_prior   # noqa: E402  (repo-local import, path set above) -- condition-prior stacking
 
 SEED = 42
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -437,6 +439,45 @@ def soft_vote_accuracy_cond(model, paths, labels, run_ids, cond_labels_list, val
     return _soft_vote(all_probs, labels, run_ids)
 
 
+@torch.no_grad()
+def run_prob_vectors(model, paths, labels, run_ids, val_tf, device, cond_labels_list=None):
+    """Returns (run_probs: {run: np.ndarray[num_classes]}, run_true: {run: int}) --
+    the per-run averaged softmax probability vector that _soft_vote() computes
+    internally (see its `avg_prob = torch.stack(run_probs[run]).mean(dim=0)`)
+    but discards after argmax. Needed for condition-prior probability stacking
+    (cond_prior.py) -- both stack_conditioning_32x3.py (post-hoc, an already-
+    trained checkpoint) and this module's own main() call this, so the
+    forward-pass loop lives in exactly one place.
+
+    cond_labels_list=[spd, doc] routes through ConditionedScalogramDataset /
+    model(imgs, spd, doc) (matching soft_vote_accuracy_cond); None routes
+    through the plain ScalogramDataset / model(imgs) path (matching
+    soft_vote_accuracy) -- so this works for both cascading and plain
+    checkpoints."""
+    model.eval()
+    if cond_labels_list is not None:
+        ds = ConditionedScalogramDataset(paths, labels, cond_labels_list[0], cond_labels_list[1], val_tf)
+        dl = DataLoader(ds, batch_size=16, shuffle=False, num_workers=0)
+        all_probs = []
+        for imgs, _lbls, spd, doc in dl:
+            probs = torch.softmax(model(imgs.to(device), spd.to(device), doc.to(device)), dim=1).cpu()
+            all_probs.extend(probs.unbind(0))
+    else:
+        ds = ScalogramDataset(paths, labels, val_tf)
+        dl = DataLoader(ds, batch_size=16, shuffle=False, num_workers=0)
+        all_probs = []
+        for imgs, _ in dl:
+            probs = torch.softmax(model(imgs.to(device)), dim=1).cpu()
+            all_probs.extend(probs.unbind(0))
+
+    run_prob_lists, run_true = {}, {}
+    for prob, true, run in zip(all_probs, labels, run_ids):
+        run_prob_lists.setdefault(run, []).append(prob)
+        run_true[run] = true
+    run_probs = {run: torch.stack(probs).mean(dim=0).numpy() for run, probs in run_prob_lists.items()}
+    return run_probs, run_true
+
+
 def run_ids_from_paths(paths):
     return [Path(p).stem.split("_w")[0] for p in paths]
 
@@ -479,16 +520,15 @@ def run_kfold(args, spec, img_dir, scalo_tag, device, dropout, train_tf, val_tf)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
-        best_fold_win_acc, best_state = 0.0, None
         for epoch in range(1, args.epochs + 1):
             train_epoch(model, train_dl, criterion, optimizer, device)
             _, te_acc, _, _ = eval_epoch(model, test_dl, criterion, device)
             scheduler.step()
-            if te_acc > best_fold_win_acc:
-                best_fold_win_acc = te_acc
-                best_state = {k: v.clone() for k, v in model.state_dict().items()}
 
-        model.load_state_dict(best_state)
+        # Fixed-epoch-count result -- no test-accuracy-driven checkpoint
+        # selection (same leakage `cnn_train_32x3.py`'s main() path had; see
+        # Shoulder Milling/residual_preprocessing_readme.md's bias source #2).
+        best_fold_win_acc = te_acc
         te_run_ids = run_ids_from_paths(te_p)
         vote_acc, _, _ = majority_vote_accuracy(model, te_p, te_l, te_run_ids, val_tf, device)
         soft_acc, _, _ = soft_vote_accuracy(model, te_p, te_l, te_run_ids, val_tf, device)
@@ -557,6 +597,12 @@ def main():
     parser.add_argument("--kfold", type=int, default=1,
                         help="Stratified N-fold CV (1=single fixed split, N>1=N-fold). "
                              "Not compatible with --conditioned/--cascade_predicted.")
+    parser.add_argument("--cond_weight", type=float, default=0.7,
+                        help="feed_coarse/roughness only: weight given to the condition-prior "
+                             "model (cond_prior.py, fit on (DOC,speed) one-hot alone) vs this "
+                             "run's own image-model probabilities when computing the additive "
+                             "run_level_stack_acc metric. Post-hoc only -- affects nothing about "
+                             "how this model is trained, only what gets reported alongside it.")
     args = parser.parse_args()
 
     if args.conditioned and args.cascade_predicted:
@@ -664,7 +710,7 @@ def main():
     tag = f"{args.arch}_lr{args.lr:g}"
     if args.run_tag:
         tag += f"_{args.run_tag}"
-    best_acc, best_epoch, history = 0.0, 0, []
+    history = []
 
     print(f"\n{'Ep':>4}  {'TrLoss':>8}  {'TrAcc':>7}  {'TeLoss':>8}  {'TeAcc':>7}  {'TeF1':>6}")
     print("-" * 50)
@@ -674,15 +720,17 @@ def main():
         te_f1 = f1_score(te_lbls, te_preds, average="macro", zero_division=0)
         scheduler.step()
 
-        if te_acc > best_acc:
-            best_acc, best_epoch = te_acc, epoch
-            torch.save(model.state_dict(), out_dir / f"{tag}_best.pt")
-
         history.append({"epoch": epoch, "tr_loss": round(tr_loss, 4), "tr_acc": round(tr_acc, 4),
                          "te_loss": round(te_loss, 4), "te_acc": round(te_acc, 4), "te_f1": round(te_f1, 4)})
         print(f"{epoch:>4}  {tr_loss:>8.4f}  {tr_acc:>7.3f}  {te_loss:>8.4f}  {te_acc:>7.3f}  {te_f1:>6.3f}")
 
-    model.load_state_dict(torch.load(out_dir / f"{tag}_best.pt", map_location=device, weights_only=True))
+    # Fixed-epoch-count checkpoint -- no test-accuracy-driven selection (see
+    # Shoulder Milling/residual_preprocessing_readme.md's "Why the Old Numbers
+    # Were Misleading" #2: `if te_acc > best_acc: save` picks whichever epoch
+    # happened to fit THIS test split best, which is itself test-set leakage
+    # even though it looks like ordinary early stopping).
+    best_acc, best_epoch = te_acc, args.epochs
+    torch.save(model.state_dict(), out_dir / f"{tag}_best.pt")
     te_run_ids = run_ids_from_paths(te_p)
     if cascading:
         run_acc, vote_preds, vote_true = majority_vote_accuracy_cond(
@@ -692,6 +740,57 @@ def main():
     else:
         run_acc, vote_preds, vote_true = majority_vote_accuracy(model, te_p, te_l, te_run_ids, val_tf, device)
         soft_acc, soft_preds, soft_true = soft_vote_accuracy(model, te_p, te_l, te_run_ids, val_tf, device)
+
+    # Condition-prior probability stacking (additive, post-hoc metric only --
+    # see cond_prior.py's docstring). feed_coarse/roughness only (COND_PARENTS
+    # identifies exactly the two targets that are causally downstream of the
+    # (DOC, speed) machining condition; speed/doc themselves are the parents,
+    # nothing to stack). Wrapped in try/except so a condition-prior edge case
+    # can never break this training run's checkpoint/JSON emission.
+    stack_acc, stack_acc_by_weight = None, None
+    if args.target in COND_PARENTS:
+        try:
+            run_probs, run_true_map = run_prob_vectors(
+                model, te_p, te_l, te_run_ids, val_tf, device,
+                [te_spd, te_doc] if cascading else None)
+            test_order = list(run_true_map)
+            pixel_mat = np.stack([run_probs[r] for r in test_order])
+            true_arr = np.array([run_true_map[r] for r in test_order])
+
+            # Fit at WINDOW level (tr_p/tr_l, one row per training window),
+            # not run level -- HistGradientBoostingClassifier's default
+            # min_samples_leaf=20 can't split meaningfully on only ~33 RUN-
+            # level rows and degenerates to predicting the single overall-
+            # majority class for every test run (confirmed while building
+            # stack_conditioning_32x3.py). Window-level repetition (each
+            # run's condition repeated once per training window) gives it
+            # enough rows.
+            cond_of = cond_prior.conditions_for_runs(spec["label_map"], DOC_LABELS, SPEED_LABELS)
+            tr_run_ids = run_ids_from_paths(tr_p)
+            # tr_p/tr_l may include synthetic SMOTE runs (smote<target><i>_w{k})
+            # when SMOTE is enabled -- those have no real (DOC,speed) condition
+            # (not in spec["label_map"]/cond_of), so exclude them from the
+            # condition-prior fit; only real runs carry a genuine condition.
+            real_mask = [r in cond_of for r in tr_run_ids]
+            tr_cond_list = [cond_of[r] for r, keep in zip(tr_run_ids, real_mask) if keep]
+            tr_cond_labels = [lbl for lbl, keep in zip(tr_l, real_mask) if keep]
+            clf, classes_ = cond_prior.fit_condition_prior(
+                tr_cond_list, tr_cond_labels, spec["num_classes"])
+            cond_mat = cond_prior.predict_condition_prior(
+                clf, classes_, [cond_of[r] for r in test_order], spec["num_classes"])
+
+            stack_acc_by_weight = {}
+            for w in (0.5, 0.6, 0.7, 0.8, 0.9, 1.0):
+                stacked = cond_prior.stack_probs(cond_mat, pixel_mat, w)
+                stack_acc_by_weight[str(w)] = round(float(np.mean(stacked.argmax(1) == true_arr)), 4)
+            stack_acc = stack_acc_by_weight.get(str(args.cond_weight))
+            if stack_acc is None:
+                stacked = cond_prior.stack_probs(cond_mat, pixel_mat, args.cond_weight)
+                stack_acc = round(float(np.mean(stacked.argmax(1) == true_arr)), 4)
+            print(f"Run-level condition-prior-stacked acc (weight={args.cond_weight}): "
+                  f"{stack_acc:.3f}  (sweep: {stack_acc_by_weight})")
+        except Exception as e:
+            print(f"  [cond-prior stacking] skipped due to error: {e}")
 
     print(f"\nBest window-level test acc : {best_acc:.3f}  (epoch {best_epoch})")
     print(f"Run-level majority vote acc: {run_acc:.3f}  "
@@ -715,6 +814,8 @@ def main():
             "cascade_predicted": args.cascade_predicted, "split": args.split,
             "best_window_acc": round(best_acc, 4), "best_epoch": best_epoch,
             "run_level_acc": round(run_acc, 4), "run_level_soft_acc": round(soft_acc, 4),
+            "cond_weight": args.cond_weight, "run_level_stack_acc": stack_acc,
+            "run_level_stack_acc_by_weight": stack_acc_by_weight,
             "history": history,
         }, f, indent=2)
     print(f"\nHistory saved to {hist_path}")
