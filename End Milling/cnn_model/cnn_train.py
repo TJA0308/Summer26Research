@@ -72,9 +72,21 @@ FEED_COARSE_TEST_RUNS = {
     "run5",  "run36", "run3",  "run21",  # High (7-8 mm/rev): 5000rpm DOC=0.015, 5000rpm DOC=0.060, 4000rpm DOC=0.015, 5000rpm DOC=0.030
 }
 
-# 6-class fine-grained feed (placeholder; use feed_coarse for 3-class experiments)
+# 6-class fine-grained feed. 1 test run per class (not 4/class like
+# FEED_COARSE_TEST_RUNS) -- class 5 (8 mm/rev) only has 3 runs in the whole
+# dataset, all at 5000rpm by design, so holding out more than 1 per class
+# isn't possible without starving training further. 39 train / 6 test;
+# class 5 is left with only 2 training runs -- treat its accuracy with more
+# skepticism than the other 5 classes.
 FEED_NAMES     = {0: "3 mm/rev", 1: "4 mm/rev", 2: "5 mm/rev", 3: "6 mm/rev", 4: "7 mm/rev", 5: "8 mm/rev"}
-FEED_TEST_RUNS = FEED_COARSE_TEST_RUNS
+FEED_TEST_RUNS = {
+    "run40",  # 3 mm/rev  (DOC=0.015, 2000rpm)
+    "run28",  # 4 mm/rev  (DOC=0.060, 3000rpm)
+    "run1",   # 5 mm/rev  (DOC=0.015, 4000rpm)
+    "run17",  # 6 mm/rev  (DOC=0.030, 4000rpm)
+    "run35",  # 7 mm/rev  (DOC=0.060, 5000rpm)
+    "run6",   # 8 mm/rev  (DOC=0.015, 5000rpm)
+}
 
 # ── Depth-of-cut prediction ───────────────────────────────────────────────
 DOC_LABELS = {

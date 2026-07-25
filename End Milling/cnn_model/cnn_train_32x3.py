@@ -22,12 +22,15 @@ Targets (--target):
     speed        -- 5-class: 1500/2000/3000/4000/5000 rpm
     doc          -- 3-class: 0.015 / 0.030 / 0.060 mm
     feed_coarse  -- 3-class: low(3-4) / med(5-6) / high(7-8) mm/rev
+    feed         -- 6-class: 3/4/5/6/7/8 mm/rev (fine-grained; same images
+                    as feed_coarse, scale selection was already tuned against
+                    the raw mm/rev value, see em_feature_common.select_cwt_rows)
     roughness    -- 3-class: Smooth(<0.7) / Medium(0.7-1.0) / Rough(>1.0) Ra um
 
 Scalogram folder (--img_dir, relative to the repo root, one level up from
 this file):
     scalograms_32x3                  (roughness-tuned scale selection)
-    scalograms_32x3_feedopt          (feed_coarse-tuned scale selection)
+    scalograms_32x3_feedopt          (feed_coarse/feed-tuned scale selection)
     scalograms_32x3_9win             (9 real time-windows/run variant)
     scalograms_32x3_feedopt_9win
     ..._residual / ..._residual_roughness   (after build_residual_scalograms.py)
@@ -41,15 +44,16 @@ see cnn_train.py's load_smote_cond_map) if present -- run
 ../smote_generate_32x3.py first. --no_smote skips loading them.
 
 Cascade conditioning:
-  --conditioned          feed_coarse or roughness. Conditions on GROUND-TRUTH
-                         speed + doc labels (a shortcut -- the model is told
-                         the real answer for the parent tasks). Useful as an
-                         upper bound / sanity check. Both targets share the
-                         same DOC x speed nuisance covariate that motivates
-                         condition-residual correction in the first place
-                         (see build_residual_scalograms.py's docstring), so
-                         both are legitimate cascade candidates.
-  --cascade_predicted    feed_coarse or roughness. Conditions on PREDICTED
+  --conditioned          feed_coarse, feed, or roughness. Conditions on
+                         GROUND-TRUTH speed + doc labels (a shortcut -- the
+                         model is told the real answer for the parent
+                         tasks). Useful as an upper bound / sanity check.
+                         All three targets share the same DOC x speed
+                         nuisance covariate that motivates condition-residual
+                         correction in the first place (see
+                         build_residual_scalograms.py's docstring), so all
+                         are legitimate cascade candidates.
+  --cascade_predicted    feed_coarse, feed, or roughness. Conditions on PREDICTED
                          speed + doc labels from speed_pred_<scalo_tag>[...]
                          .csv and doc_pred_<scalo_tag>[...].csv, written by
                          ../predict_conditioning_32x3.py after training and
@@ -110,6 +114,7 @@ from cnn_train import (   # noqa: E402  (repo-local import, path set above)
     SPEED_LABELS, SPEED_NAMES, SPEED_TEST_RUNS, SPEED_TEST_RUNS_BALANCED,
     DOC_LABELS, DOC_NAMES, DOC_TEST_RUNS, DOC_TEST_RUNS_12,
     FEED_COARSE_LABELS, FEED_COARSE_NAMES, FEED_COARSE_TEST_RUNS, FEED_COARSE_TEST_RUNS_12,
+    FEED_LABELS, FEED_NAMES, FEED_TEST_RUNS,
     RA_LABELS, RA_NAMES, RA_TEST_RUNS, RA_TEST_RUNS_12,
     ScalogramDataset, ConditionedScalogramDataset,
     load_split, load_split_conditioned, load_smote_map, load_smote_cond_map,
@@ -140,6 +145,17 @@ TARGETS = {
         "test_runs_standard": FEED_COARSE_TEST_RUNS, "test_runs_balanced": FEED_COARSE_TEST_RUNS_12,
         "smote_csv": "smote_feed_coarse_labels.csv",
     },
+    "feed": {
+        # 6-class fine-grained feed (3/4/5/6/7/8 mm/rev) -- same runs/images
+        # as feed_coarse, just unrounded labels. No dedicated "balanced"
+        # variant exists (see FEED_TEST_RUNS's comment in cnn_train.py for
+        # why: class 5 only has 3 runs total), so both split modes use the
+        # same fixed test set.
+        "num_classes": 6, "class_names": FEED_NAMES,
+        "label_map": FEED_LABELS,
+        "test_runs_standard": FEED_TEST_RUNS, "test_runs_balanced": FEED_TEST_RUNS,
+        "smote_csv": "smote_labels.csv",
+    },
     "roughness": {
         "num_classes": 3, "class_names": RA_NAMES,
         "label_map": RA_LABELS,
@@ -151,15 +167,18 @@ TARGETS = {
 # Carried over from Shoulder Milling's DEFAULT_DROPOUT finding (speed doesn't
 # overfit, others do) as an initial guess for this new feature set -- not yet
 # separately validated here.
-DEFAULT_DROPOUT = {"speed": 0.0, "doc": 0.15, "feed_coarse": 0.15, "roughness": 0.15}
+DEFAULT_DROPOUT = {"speed": 0.0, "doc": 0.15, "feed_coarse": 0.15, "feed": 0.15, "roughness": 0.15}
 
 # End Milling's cascade shape is fixed: a cascading target conditions
 # jointly on BOTH speed and doc (never a subset) -- see cnn_train.py's
-# ConditionedResNet. feed_coarse and roughness both qualify: both share the
-# DOC x speed nuisance covariate condition-residual correction targets (see
-# build_residual_scalograms.py's docstring) -- speed/doc themselves don't,
-# since they already hit ~100% on raw features with nothing to cascade from.
-COND_PARENTS = {"feed_coarse": ["speed", "doc"], "roughness": ["speed", "doc"]}
+# ConditionedResNet. feed_coarse, feed, and roughness all qualify: they
+# share the DOC x speed nuisance covariate condition-residual correction
+# targets (see build_residual_scalograms.py's docstring) -- speed/doc
+# themselves don't, since they already hit ~100% on raw features with
+# nothing to cascade from. feed (6-class) is just feed_coarse's ungrouped
+# version of the same causal-downstream-of-condition relationship, so the
+# same condition-prior stacking logic applies unchanged.
+COND_PARENTS = {"feed_coarse": ["speed", "doc"], "feed": ["speed", "doc"], "roughness": ["speed", "doc"]}
 COND_DIMS    = {"speed": 5, "doc": 3}
 
 
@@ -590,15 +609,15 @@ def main():
     parser.add_argument("--split", default="standard", choices=["standard", "balanced"],
                         help="Which *_TEST_RUNS set from cnn_train.py to use")
     parser.add_argument("--conditioned", action="store_true",
-                        help="feed_coarse/roughness only: condition on GROUND-TRUTH speed+doc")
+                        help="feed_coarse/feed/roughness only: condition on GROUND-TRUTH speed+doc")
     parser.add_argument("--cascade_predicted", action="store_true",
-                        help="feed_coarse/roughness only: condition on PREDICTED speed+doc "
+                        help="feed_coarse/feed/roughness only: condition on PREDICTED speed+doc "
                              "(run predict_conditioning_32x3.py for both first)")
     parser.add_argument("--kfold", type=int, default=1,
                         help="Stratified N-fold CV (1=single fixed split, N>1=N-fold). "
                              "Not compatible with --conditioned/--cascade_predicted.")
     parser.add_argument("--cond_weight", type=float, default=0.7,
-                        help="feed_coarse/roughness only: weight given to the condition-prior "
+                        help="feed_coarse/feed/roughness only: weight given to the condition-prior "
                              "model (cond_prior.py, fit on (DOC,speed) one-hot alone) vs this "
                              "run's own image-model probabilities when computing the additive "
                              "run_level_stack_acc metric. Post-hoc only -- affects nothing about "
@@ -742,10 +761,11 @@ def main():
         soft_acc, soft_preds, soft_true = soft_vote_accuracy(model, te_p, te_l, te_run_ids, val_tf, device)
 
     # Condition-prior probability stacking (additive, post-hoc metric only --
-    # see cond_prior.py's docstring). feed_coarse/roughness only (COND_PARENTS
-    # identifies exactly the two targets that are causally downstream of the
-    # (DOC, speed) machining condition; speed/doc themselves are the parents,
-    # nothing to stack). Wrapped in try/except so a condition-prior edge case
+    # see cond_prior.py's docstring). feed_coarse/feed/roughness only
+    # (COND_PARENTS identifies exactly the targets that are causally
+    # downstream of the (DOC, speed) machining condition; speed/doc
+    # themselves are the parents, nothing to stack). Wrapped in try/except
+    # so a condition-prior edge case
     # can never break this training run's checkpoint/JSON emission.
     stack_acc, stack_acc_by_weight = None, None
     if args.target in COND_PARENTS:
