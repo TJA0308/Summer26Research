@@ -30,7 +30,7 @@ Set-Location $PSScriptRoot
 
 $Archs = @("resnet18", "resnet50", "efficientnet_b0", "convnext_tiny")
 $LRs   = @("1e-3", "1e-4")
-$Targets = @("speed", "doc", "feed_coarse", "roughness")
+$Targets = @("speed", "doc", "feed_coarse", "feed", "roughness")
 
 $Layouts = @(
     @{ Name = "32x3";  Base = "scalograms_32x3";  Feedopt = "scalograms_32x3_feedopt";
@@ -48,6 +48,7 @@ foreach ($layout in $Layouts) {
         $dirFor = @{
             "roughness"   = "$($layout.Base)$winSuffix"
             "feed_coarse" = "$($layout.Feedopt)$winSuffix"
+            "feed"        = "$($layout.Feedopt)$winSuffix"
             "speed"       = "$($layout.Speedopt)$winSuffix"
             "doc"         = "$($layout.Docopt)$winSuffix"
         }
