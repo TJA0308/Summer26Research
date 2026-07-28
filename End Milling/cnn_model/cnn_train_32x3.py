@@ -209,6 +209,34 @@ class AddGaussianNoise:
         return tensor + torch.randn_like(tensor) * self.std
 
 
+class OrdinalCELoss(nn.Module):
+    """Cross-entropy + differentiable ordinal distance penalty.
+
+    For ordered classes (0 < 1 < 2 …), predicting class 2 when the true label
+    is 0 should hurt more than predicting class 1. Standard CE treats all wrong
+    classes identically. This loss adds alpha * E_k[|y-k| * p_k] to the CE so
+    the gradient pushes predictions toward adjacent rather than distant classes.
+
+    alpha=1.0 keeps the two terms roughly on the same scale for 3-class targets;
+    lower alpha → closer to plain CE.
+    """
+    def __init__(self, n_cls: int, alpha: float = 1.0, weight=None):
+        super().__init__()
+        dist = torch.zeros(n_cls, n_cls)
+        for i in range(n_cls):
+            for j in range(n_cls):
+                dist[i, j] = abs(i - j)
+        self.register_buffer("dist", dist)
+        self.alpha = alpha
+        self.weight = weight
+
+    def forward(self, logits, targets):
+        probs = torch.softmax(logits, dim=1)
+        ordinal_penalty = (probs * self.dist.to(targets.device)[targets]).sum(dim=1).mean()
+        ce = F.cross_entropy(logits, targets, weight=self.weight)
+        return ce + self.alpha * ordinal_penalty
+
+
 def build_transforms(noise_std: float = 0.02):
     train_tf = transforms.Compose([
         transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BILINEAR),
@@ -535,7 +563,10 @@ def run_kfold(args, spec, img_dir, scalo_tag, device, dropout, train_tf, val_tf)
         counts[counts == 0] = 1.0
         weights = torch.tensor(1.0 / counts, dtype=torch.float32).to(device)
         weights = weights / weights.sum()
-        criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=args.label_smooth)
+        if args.ordinal_loss:
+            criterion = OrdinalCELoss(spec["num_classes"], alpha=args.ordinal_alpha, weight=weights)
+        else:
+            criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=args.label_smooth)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
@@ -616,6 +647,13 @@ def main():
     parser.add_argument("--kfold", type=int, default=1,
                         help="Stratified N-fold CV (1=single fixed split, N>1=N-fold). "
                              "Not compatible with --conditioned/--cascade_predicted.")
+    parser.add_argument("--ordinal_loss", action="store_true",
+                        help="Replace CE with ordinal CE (CE + distance penalty). "
+                             "Meaningful for ordered targets: feed_coarse (low<med<high), "
+                             "doc (0.015<0.030<0.060), roughness (smooth<medium<rough).")
+    parser.add_argument("--ordinal_alpha", type=float, default=1.0,
+                        help="Weight of the ordinal distance penalty term (see OrdinalCELoss). "
+                             "1.0 keeps CE and penalty on similar scale for 3-class targets.")
     parser.add_argument("--cond_weight", type=float, default=0.7,
                         help="feed_coarse/feed/roughness only: weight given to the condition-prior "
                              "model (cond_prior.py, fit on (DOC,speed) one-hot alone) vs this "
@@ -722,7 +760,11 @@ def main():
     train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=0)
     test_dl  = DataLoader(test_ds, batch_size=args.batch, shuffle=False, num_workers=0)
 
-    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=args.label_smooth)
+    if args.ordinal_loss:
+        criterion = OrdinalCELoss(spec["num_classes"], alpha=args.ordinal_alpha, weight=weights)
+        print(f"Loss: OrdinalCE (alpha={args.ordinal_alpha})")
+    else:
+        criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=args.label_smooth)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
@@ -830,6 +872,7 @@ def main():
             "epochs": args.epochs, "lr": args.lr,
             "smote": (not args.no_smote) and not cascading, "dropout": dropout,
             "label_smooth": args.label_smooth, "noise_std": args.noise_std,
+            "ordinal_loss": args.ordinal_loss, "ordinal_alpha": args.ordinal_alpha,
             "run_tag": args.run_tag, "conditioned": args.conditioned,
             "cascade_predicted": args.cascade_predicted, "split": args.split,
             "best_window_acc": round(best_acc, 4), "best_epoch": best_epoch,

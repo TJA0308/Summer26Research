@@ -24,7 +24,7 @@ import numpy as np
 import openpyxl
 import pandas as pd
 from PIL import Image
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr, f_oneway
 
 ROOT = Path(__file__).parent
 DATA_DIR = ROOT / "data"
@@ -162,41 +162,86 @@ def out_dir_name(base_name: str, target: str, n_windows: int) -> str:
     return name
 
 
-def select_cwt_rows(images: dict, mod, target: str) -> tuple:
-    """Top-32-of-64 mexican/coif scale rows by averaged |Spearman rho|
-    against the target, re-sorted ascending. target: 'roughness' -> Ra (um),
-    'feed_coarse' -> feed rate (mm/rev), 'speed' -> rpm, 'doc' -> mm.
-    Identical method regardless of output layout (32x3 or 32x12) -- scale
-    selection only ever concerns the two CWT columns."""
-    scores = cwt_row_scores(images, mod, target)
+def cwt_row_scores_fstat(images: dict, mod, target: str) -> np.ndarray:
+    """One-way ANOVA F-statistic across target classes for each of the 64
+    CWT scale rows (averaged over mexican + coif). Unlike Spearman rho, F-stat
+    does not assume monotonic ordering -- it measures whether any pair of
+    classes is separable, including non-adjacent pairs like 3000 vs 5000 rpm
+    that Spearman may under-rank because they're not at the ordinal extremes."""
+    runs = sorted(images.keys(), key=lambda s: int(s[3:]))
+    mex = np.stack([images[r][:, COL_IDX["64mexican"]] for r in runs])   # (45, 64)
+    coi = np.stack([images[r][:, COL_IDX["64coif"]] for r in runs])      # (45, 64)
+    target_arr = target_values(images, mod, target)
+    classes = np.unique(target_arr)
+
+    scores = np.zeros(N_FULL)
+    for row_i in range(N_FULL):
+        groups_mex = [mex[target_arr == c, row_i] for c in classes]
+        groups_coi = [coi[target_arr == c, row_i] for c in classes]
+        f_mex, _ = f_oneway(*groups_mex)
+        f_coi, _ = f_oneway(*groups_coi)
+        f_mex = 0.0 if (np.isnan(f_mex) or np.isinf(f_mex)) else f_mex
+        f_coi = 0.0 if (np.isnan(f_coi) or np.isinf(f_coi)) else f_coi
+        scores[row_i] = (f_mex + f_coi) / 2.0
+    return scores
+
+
+def select_cwt_rows(images: dict, mod, target: str, method: str = "spearman") -> tuple:
+    """Top-32-of-64 mexican/coif scale rows, re-sorted ascending.
+
+    method='spearman' (default): averaged |Spearman rho| against the target --
+        the original method, works well for monotonically ordered targets.
+    method='fstat': one-way ANOVA F-statistic across target classes -- better
+        when the target classes are not monotonically separable (e.g. speed
+        classes 3000 rpm vs 5000 rpm are confused under Spearman because they
+        are not at ordinal extremes).
+    """
+    if method == "fstat":
+        scores = cwt_row_scores_fstat(images, mod, target)
+    else:
+        scores = cwt_row_scores(images, mod, target)
     top_idx = np.sort(np.argsort(scores)[::-1][:N_SELECT])
     return top_idx, scores
 
 
-def normalize_and_window(run_imgs_raw: np.ndarray, n_windows: int) -> tuple:
+def normalize_and_window(run_imgs_raw: np.ndarray, n_windows: int,
+                         norm_mode: str = "global", doc_labels: list = None) -> tuple:
     """Shared normalisation + windowing for both builders. run_imgs_raw:
     (45, 32, n_cols) float64, one full image per run (rows sorted by run
     number). Returns (run_imgs_u8, block_idx, real_block_sizes, pad_size):
 
-    - Column-wise z-score (fit on all 45 runs), clip +-3 sigma, rescale to
-      [0, 255] -- identical convention to Shoulder Milling's Option C/D.
-    - 32-row axis split into n_windows row-blocks via np.array_split
-      (deterministic, e.g. 3 -> [11,11,10], 9 -> [4,4,4,4,4,3,3,3,3] -- 32
-      doesn't divide evenly by 3 or 9). block_idx/real_block_sizes describe
-      the true (unpadded) split; pad_size is the largest block, since every
-      window image gets zero-padded up to that size for a uniform shape
-      (build_residual_scalograms.py, reused unmodified downstream, averages
-      images per condition group and needs one).
+    norm_mode='global' (default): column-wise z-score across all 45 runs,
+        clip ±3 sigma, rescale to [0,255]. Original convention.
+    norm_mode='per_doc': z-score within each DOC group (0/1/2, 15 runs each)
+        separately before clipping. Strips DOC-driven mean/variance shifts from
+        the feature images, useful for feed_coarse where DOC is the main
+        confound. doc_labels must be provided (list of int, one per run, same
+        order as run_imgs_raw).
     """
     n_cols = run_imgs_raw.shape[-1]
-    flat = run_imgs_raw.reshape(-1, n_cols)
-    mu = flat.mean(axis=0)
-    sig = flat.std(axis=0)
-    sig[sig < 1e-10] = 1.0
-    run_imgs_norm = (run_imgs_raw - mu) / sig
+
+    if norm_mode == "per_doc" and doc_labels is not None:
+        doc_arr = np.array(doc_labels)
+        run_imgs_norm = np.zeros_like(run_imgs_raw)
+        for doc_cls in np.unique(doc_arr):
+            idx = np.where(doc_arr == doc_cls)[0]
+            group = run_imgs_raw[idx]
+            flat = group.reshape(-1, n_cols)
+            mu  = flat.mean(axis=0)
+            sig = flat.std(axis=0)
+            sig[sig < 1e-10] = 1.0
+            run_imgs_norm[idx] = (group - mu) / sig
+    else:
+        flat = run_imgs_raw.reshape(-1, n_cols)
+        mu  = flat.mean(axis=0)
+        sig = flat.std(axis=0)
+        sig[sig < 1e-10] = 1.0
+        run_imgs_norm = (run_imgs_raw - mu) / sig
+
     run_imgs_u8 = np.clip((run_imgs_norm + 3) / 6 * 255, 0, 255).astype(np.uint8)
 
-    block_idx = [b.tolist() for b in np.array_split(np.arange(N_SELECT), n_windows)]
+    n_rows = run_imgs_raw.shape[1]
+    block_idx = [b.tolist() for b in np.array_split(np.arange(n_rows), n_windows)]
     real_block_sizes = [len(b) for b in block_idx]
     pad_size = max(real_block_sizes)
     return run_imgs_u8, block_idx, real_block_sizes, pad_size
@@ -204,15 +249,17 @@ def normalize_and_window(run_imgs_raw: np.ndarray, n_windows: int) -> tuple:
 
 def write_dataset(out_dir: Path, mod, target: str, n_windows: int, feature_cols: list,
                    runs_sorted: list, run_imgs_raw: np.ndarray, sel_rows: np.ndarray,
-                   scores: np.ndarray):
+                   scores: np.ndarray, norm_mode: str = "global"):
     """Shared write path for both builders: normalises + windows
     run_imgs_raw, writes run{N}_w{K}.png (zero-padded to a uniform shape),
     labels.csv, selected_scales.json, features_raw.npz (per-window blocks),
     and run_features_raw.npz (full per-run image, pre-window-split -- for
-    PCA)."""
+    PCA). norm_mode: 'global' (default) or 'per_doc' (see normalize_and_window)."""
     out_dir.mkdir(exist_ok=True)
     n_cols = run_imgs_raw.shape[-1]
-    run_imgs_u8, block_idx, real_block_sizes, pad_size = normalize_and_window(run_imgs_raw, n_windows)
+    doc_labels = [mod.DOC_LABELS[r] for r in runs_sorted]
+    run_imgs_u8, block_idx, real_block_sizes, pad_size = normalize_and_window(
+        run_imgs_raw, n_windows, norm_mode=norm_mode, doc_labels=doc_labels)
     print(f"  Row-block sizes for n_windows={n_windows}: {real_block_sizes}  "
           f"(zero-padded to {pad_size} rows each for uniform image shape)")
 

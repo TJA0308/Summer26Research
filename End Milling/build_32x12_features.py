@@ -70,10 +70,23 @@ def main():
                         help="Row-blocks to split each run's 32-row image into "
                              "(3 = baseline, replicating Shoulder Milling's 3 "
                              "windows/run; 9 -> writes the '_9win' variant)")
+    parser.add_argument("--norm_mode", default="global", choices=["global", "per_doc"],
+                        help="'global': z-score across all runs. 'per_doc': z-score within "
+                             "each DOC group. Adds '_perdoc' suffix to output dir.")
+    parser.add_argument("--scale_method", default="spearman", choices=["spearman", "fstat"],
+                        help="Scale-row selection criterion. 'spearman' (default): |Spearman rho|. "
+                             "'fstat': one-way ANOVA F-statistic across target classes. "
+                             "fstat dirs get a '_fstat' suffix.")
     args = parser.parse_args()
 
-    out_dir = ROOT / out_dir_name("scalograms_32x12", args.target, args.n_windows)
-    print(f"Target: {args.target}  |  n_windows={args.n_windows}")
+    base = "scalograms_32x12"
+    out_dir_base = out_dir_name(base, args.target, args.n_windows)
+    if args.scale_method == "fstat":
+        out_dir_base += "_fstat"
+    if args.norm_mode == "per_doc":
+        out_dir_base += "_perdoc"
+    out_dir = ROOT / out_dir_base
+    print(f"Target: {args.target}  |  n_windows={args.n_windows}  |  scale_method={args.scale_method}")
     print(f"Output dir: {out_dir}/")
 
     mod = load_cnn_train_module()
@@ -82,8 +95,8 @@ def main():
     images = load_all_run_images(mod)
     print(f"  {len(images)} runs loaded")
 
-    print(f"\nSelecting top-{N_SELECT} of 64 CWT scale rows (target={args.target}) ...")
-    sel_rows, scores = select_cwt_rows(images, mod, args.target)
+    print(f"\nSelecting top-{N_SELECT} of 64 CWT scale rows (target={args.target}, method={args.scale_method}) ...")
+    sel_rows, scores = select_cwt_rows(images, mod, args.target, method=args.scale_method)
     print(f"  Selected indices ({len(sel_rows)}): {sel_rows.tolist()}")
 
     print("\nBuilding 32x12 images (one per run) ...")
@@ -91,7 +104,7 @@ def main():
     run_imgs_raw = np.stack([build_run_image(images[r], sel_rows) for r in runs_sorted])   # (45, 32, 12)
 
     write_dataset(out_dir, mod, args.target, args.n_windows, FEATURE_COLS,
-                  runs_sorted, run_imgs_raw, sel_rows, scores)
+                  runs_sorted, run_imgs_raw, sel_rows, scores, norm_mode=args.norm_mode)
 
     print("\nDone.")
 
