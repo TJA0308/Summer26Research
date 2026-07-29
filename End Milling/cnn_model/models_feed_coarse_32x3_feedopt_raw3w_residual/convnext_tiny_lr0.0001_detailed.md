@@ -1,0 +1,20 @@
+### convnext_tiny_lr0.0001  |  target=feed_coarse  |  scalogram=32x3_feedopt_raw3w_residual  |  arch=convnext_tiny
+
+| Run | True | w1 | w2 | w3 | Hard | Soft | OK |
+|-----|------|----|----|----|------|------|----|
+| run13 | Low | Low | Low | Low | Low | Low | Y |
+| run17 | Med | Low | Low | Low | Low | Low | N |
+| run21 | Hi | Low | Low | Low | Low | Low | N |
+| run25 | Low | Low | Low | Low | Low | Low | Y |
+| run3 | Hi | Low | Med | Low | Low | Low | N |
+| run31 | Med | Low | Low | Low | Low | Low | N |
+| run36 | Hi | Low | Low | Low | Low | Low | N |
+| run37 | Low | Low | Low | Low | Low | Low | Y |
+| run45 | Med | Med | Med | Med | Med | Med | Y |
+| run5 | Hi | Med | Med | Med | Med | Med | N |
+| run7 | Low | Low | Low | Low | Low | Low | Y |
+| run9 | Med | Low | Low | Low | Low | Low | N |
+
+Window accuracy: **41.7%** (15/36)
+Run hard-vote accuracy: **41.7%** (5/12)
+Run soft-vote accuracy: **41.7%** (5/12)

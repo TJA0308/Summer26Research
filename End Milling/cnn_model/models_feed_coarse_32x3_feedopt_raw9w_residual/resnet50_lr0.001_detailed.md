@@ -1,0 +1,20 @@
+### resnet50_lr0.001  |  target=feed_coarse  |  scalogram=32x3_feedopt_raw9w_residual  |  arch=resnet50
+
+| Run | True | w1 | w2 | w3 | w4 | w5 | w6 | w7 | w8 | w9 | Hard | Soft | OK |
+|-----|------|----|----|----|----|----|----|----|----|----|------|------|----|
+| run13 | Low | Low | Low | Low | Low | Low | Low | Low | Low | Low | Low | Low | Y |
+| run17 | Med | Med | Med | Med | Med | Med | Med | Med | Med | Med | Med | Med | Y |
+| run21 | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Y |
+| run25 | Low | Low | Low | Low | Low | Low | Low | Low | Low | Low | Low | Low | Y |
+| run3 | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Y |
+| run31 | Med | Hi | Hi | Hi | Med | Med | Hi | Hi | Hi | Hi | Hi | Hi | N |
+| run36 | Hi | Med | Med | Med | Hi | Hi | Hi | Med | Hi | Med | Med | Med | N |
+| run37 | Low | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | N |
+| run45 | Med | Med | Med | Med | Med | Med | Med | Med | Med | Med | Med | Med | Y |
+| run5 | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Hi | Med | Med | Hi | Hi | Y |
+| run7 | Low | Low | Low | Low | Low | Low | Low | Low | Low | Med | Low | Low | Y |
+| run9 | Med | Med | Med | Med | Med | Med | Med | Med | Low | Low | Med | Med | Y |
+
+Window accuracy: **75.9%** (82/108)
+Run hard-vote accuracy: **75.0%** (9/12)
+Run soft-vote accuracy: **75.0%** (9/12)
