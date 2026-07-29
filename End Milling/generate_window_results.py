@@ -60,80 +60,88 @@ def infer_probs(model, paths, val_tf, cond_labels_list=None):
     return np.concatenate(all_probs, axis=0)
 
 
-def process_model_dir(model_dir: Path, target: str, only_missing: bool):
+def process_one_checkpoint(model_dir: Path, target: str, hist_path: Path, only_missing: bool):
+    """Runs inference for a single checkpoint's *_history.json and writes its
+    *_window_preds.csv next to it. Returns True on success, False on failure,
+    None if skipped (missing .pt, or CSV already exists and only_missing=True).
+    Factored out of process_model_dir() so eval_detailed_32x3.py can generate
+    (or reuse) exactly one checkpoint's CSV without looping over a whole
+    models_<target>_<scalo_tag>/ directory."""
     spec = TARGETS[target]
     scalo_tag = model_dir.name.replace(f"models_{target}_", "")
     img_dir = HERE / f"scalograms_{scalo_tag}"
     if not img_dir.exists():
         print(f"  skip {model_dir.name}: img_dir {img_dir} missing")
-        return
+        return None
+
+    stem = hist_path.name.replace("_history.json", "")
+    pt_path = model_dir / f"{stem}_best.pt"
+    out_csv = model_dir / f"{stem}_window_preds.csv"
+    if not pt_path.exists():
+        return None
+    if only_missing and out_csv.exists():
+        return None
 
     _, val_tf = build_transforms()
+    hist = json.loads(hist_path.read_text())
+    conditioned = hist.get("conditioned", False)
+    cascade_predicted = hist.get("cascade_predicted", False)
+    run_tag = hist.get("run_tag", "") or ""
+    split = hist.get("split", "standard")
+    cascading = conditioned or cascade_predicted
+    test_runs = spec["test_runs_balanced"] if split == "balanced" else spec["test_runs_standard"]
+
+    try:
+        if cascading:
+            _, (te_p, te_l, te_spd, te_doc) = load_split_conditioned(
+                img_dir, spec["label_map"], test_runs, SPEED_LABELS, DOC_LABELS)
+            if cascade_predicted:
+                for parent, arr in (("speed", te_spd), ("doc", te_doc)):
+                    pred_te = load_predicted_conditioning(img_dir, parent, te_p, scalo_tag, run_tag)
+                    if pred_te is None:
+                        raise FileNotFoundError(f"{parent}_pred_{scalo_tag}_{run_tag}.csv missing")
+                    arr[:] = pred_te
+            model = ConditionedModel(hist["arch"], spec["num_classes"],
+                                      [COND_DIMS["speed"], COND_DIMS["doc"]],
+                                      dropout=hist.get("dropout", 0.15)).to(DEVICE)
+            state = torch.load(pt_path, map_location=DEVICE, weights_only=False)
+            model.load_state_dict(state)
+            model.eval()
+            probs = infer_probs(model, te_p, val_tf, cond_labels_list=[te_spd, te_doc])
+        else:
+            _, (te_p, te_l) = load_split(img_dir, spec["label_map"], test_runs, {})
+            model = build_model(hist["arch"], spec["num_classes"],
+                                 dropout=hist.get("dropout", 0.15)).to(DEVICE)
+            state = torch.load(pt_path, map_location=DEVICE, weights_only=False)
+            model.load_state_dict(state)
+            model.eval()
+            probs = infer_probs(model, te_p, val_tf)
+    except Exception as e:
+        print(f"  FAILED {model_dir.name}/{stem}: {e}")
+        return False
+
+    run_ids = run_ids_from_paths(te_p)
+    preds = probs.argmax(axis=1)
+    rows = []
+    for i, p in enumerate(te_p):
+        row = {
+            "filename": Path(p).name, "run": run_ids[i],
+            "true_label": te_l[i], "pred_label": int(preds[i]),
+        }
+        for c in range(spec["num_classes"]):
+            row[f"prob_{c}"] = round(float(probs[i, c]), 6)
+        rows.append(row)
+    pd.DataFrame(rows).to_csv(out_csv, index=False)
+    n_correct = int((preds == np.array(te_l)).sum())
+    print(f"  {model_dir.name}/{stem}: wrote {len(rows)} window preds "
+          f"({n_correct}/{len(rows)} window-level correct) -> {out_csv.name}")
+    return True
+
+
+def process_model_dir(model_dir: Path, target: str, only_missing: bool):
     hist_files = sorted(model_dir.glob("*_history.json"))
-    if not hist_files:
-        return
-
     for hist_path in hist_files:
-        stem = hist_path.name.replace("_history.json", "")
-        pt_path = model_dir / f"{stem}_best.pt"
-        out_csv = model_dir / f"{stem}_window_preds.csv"
-        if not pt_path.exists():
-            continue
-        if only_missing and out_csv.exists():
-            continue
-
-        hist = json.loads(hist_path.read_text())
-        conditioned = hist.get("conditioned", False)
-        cascade_predicted = hist.get("cascade_predicted", False)
-        run_tag = hist.get("run_tag", "") or ""
-        split = hist.get("split", "standard")
-        cascading = conditioned or cascade_predicted
-        test_runs = spec["test_runs_balanced"] if split == "balanced" else spec["test_runs_standard"]
-
-        try:
-            if cascading:
-                _, (te_p, te_l, te_spd, te_doc) = load_split_conditioned(
-                    img_dir, spec["label_map"], test_runs, SPEED_LABELS, DOC_LABELS)
-                if cascade_predicted:
-                    for parent, arr in (("speed", te_spd), ("doc", te_doc)):
-                        pred_te = load_predicted_conditioning(img_dir, parent, te_p, scalo_tag, run_tag)
-                        if pred_te is None:
-                            raise FileNotFoundError(f"{parent}_pred_{scalo_tag}_{run_tag}.csv missing")
-                        arr[:] = pred_te
-                model = ConditionedModel(hist["arch"], spec["num_classes"],
-                                          [COND_DIMS["speed"], COND_DIMS["doc"]],
-                                          dropout=hist.get("dropout", 0.15)).to(DEVICE)
-                state = torch.load(pt_path, map_location=DEVICE, weights_only=False)
-                model.load_state_dict(state)
-                model.eval()
-                probs = infer_probs(model, te_p, val_tf, cond_labels_list=[te_spd, te_doc])
-            else:
-                _, (te_p, te_l) = load_split(img_dir, spec["label_map"], test_runs, {})
-                model = build_model(hist["arch"], spec["num_classes"],
-                                     dropout=hist.get("dropout", 0.15)).to(DEVICE)
-                state = torch.load(pt_path, map_location=DEVICE, weights_only=False)
-                model.load_state_dict(state)
-                model.eval()
-                probs = infer_probs(model, te_p, val_tf)
-        except Exception as e:
-            print(f"  FAILED {model_dir.name}/{stem}: {e}")
-            continue
-
-        run_ids = run_ids_from_paths(te_p)
-        preds = probs.argmax(axis=1)
-        rows = []
-        for i, p in enumerate(te_p):
-            row = {
-                "filename": Path(p).name, "run": run_ids[i],
-                "true_label": te_l[i], "pred_label": int(preds[i]),
-            }
-            for c in range(spec["num_classes"]):
-                row[f"prob_{c}"] = round(float(probs[i, c]), 6)
-            rows.append(row)
-        pd.DataFrame(rows).to_csv(out_csv, index=False)
-        n_correct = int((preds == np.array(te_l)).sum())
-        print(f"  {model_dir.name}/{stem}: wrote {len(rows)} window preds "
-              f"({n_correct}/{len(rows)} window-level correct) -> {out_csv.name}")
+        process_one_checkpoint(model_dir, target, hist_path, only_missing)
 
 
 def main():
