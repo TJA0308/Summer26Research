@@ -17,9 +17,11 @@ to keep the two datasets' methodology directly comparable — see Notes.
 | Target | Best Acc | Runs Correct | Model |
 |---|---|---|---|
 | Speed (5-class) | **86.7%** | 13/15 | `models_speed_32x3_speedopt_perdoc/resnet18_lr0.001_nosmote_best.pt` |
-| Feed Coarse (3-class) | **91.7%** | 11/12 | `models_feed_coarse_32x3_feedopt/resnet18_lr0.001_smote_best.pt` |
-| Roughness (3-class) | **91.7%** | 11/12 | `models_roughness_32x12_9win_residual_roughness/resnet18_lr0.001_smote_best.pt` |
+| Feed Coarse (3-class) | **83.3%** | 10/12 | `models_feed_coarse_32x3_feedopt_raw3w_residual/resnet50_lr0.001_best.pt` |
+| Roughness (3-class) | **91.7%** | 11/12 | `models_roughness_32x3_residual_roughness/convnext_tiny_lr0.001_cascade_nosmote_best.pt` |
 | Depth of Cut (3-class) | **100.0%** | 12/12 | `models_doc_32x3_docopt_raw3w/resnet18_lr0.001_smote_best.pt` |
+
+**Correction note (this revision):** the Feed Coarse and Roughness rows above were re-verified via an independent, from-scratch live-inference check plus the full `eval_detailed_summary.csv` sweep (2113 checkpoints, 0 failures). The previously-listed configs (`feed_coarse resnet18_lr0.001_smote` at 91.7%, `roughness resnet18_lr0.001_smote` at 91.7%) do **not** reproduce — they actually score 58.3% and 83.3% respectively when the saved `_best.pt` weights are re-run on the held-out test split. This discrepancy traced back to an older, unsaved ad-hoc verification script from an earlier session that reported numbers inconsistent with both `*_history.json` and fresh inference. The rows above are the best-reproducing configs found across the full sweep, excluding the raw-signal-CWT (`scalograms_raw_10w`) family kept out of "best" consideration for methodological consistency with Shoulder Milling. Speed and DOC were also re-checked and reproduce exactly as previously reported.
 
 ---
 
@@ -41,29 +43,28 @@ Note: an ensemble of this model with a novel harmonic-feature model (FFT amplitu
 
 ## 2. Feed Rate Coarse (3-class: low 3-4 / medium 5-6 / high 7-8 mm/rev)
 
-**Feature dir:** `scalograms_32x3_feedopt/`
-**Model:** ResNet-18, lr=1e-3, SMOTE
-**Result:** 91.7% (11/12 test runs)
+**Feature dir:** `scalograms_32x3_feedopt_raw3w_residual/`
+**Model:** ResNet-50, lr=1e-3, no run_tag (base training)
+**Result:** 83.3% (10/12 test runs)
 
-- Top-32 CWT scales selected by Spearman |rho| against feed_coarse, global normalization.
-- SMOTE applied to balance the 3 feed classes (class 0 had 11 runs vs 17 for class 1 before oversampling).
+- Top-32 CWT scales selected by Spearman |rho| against feed_coarse, raw-window (`raw3w`) 3-window construction.
+- **Condition-residual correction:** per-run feature image with the (DOC x speed)-group mean subtracted, removing DOC/speed confound before feed classification.
 
-**Techniques tried that did not beat this:** ordinal cross-entropy loss (penalizes distant misclassifications — underperformed plain CE), DOC-conditioned / speed-conditioned cascade (worse), harmonic features (worse, ceiling ~67%), band-statistics features (50%, worse), per-DOC normalization (tied, did not improve further).
+**Techniques tried that did not beat this:** ordinal cross-entropy loss (underperformed plain CE), DOC-conditioned / speed-conditioned cascade with and without SMOTE (`cascade_smote`/`cascade_nosmote` run tags, tied or worse), harmonic features (worse, ceiling ~67%), band-statistics features (50%, worse), per-DOC normalization without residual correction (worse), plain (non-residual) 32x3/32x12 feedopt dirs (previously misreported as 91.7% — does not reproduce; actual 58.3%, see correction note above).
 
 ---
 
 ## 3. Surface Roughness Ra (3-class: Smooth / Medium / Rough)
 
-**Feature dir:** `scalograms_32x12_9win_residual_roughness/`
-**Model:** ResNet-18, lr=1e-3, SMOTE
+**Feature dir:** `scalograms_32x3_residual_roughness/`
+**Model:** ConvNeXt-Tiny, lr=1e-3, cascade-predicted DOC/speed conditioning, no SMOTE (run_tag `cascade_nosmote`; the `cascade_smote` variant of the same arch/lr/dir ties at the same accuracy)
 **Result:** 91.7% (11/12 test runs)
 
-- All 12 feature columns used (32FFT, 5statistics, 64mexican, 64coif, KA/SA/KD/SD, rmsA/rmsD, crestfactA/crestfactD) rather than just the 3 CWT columns.
+- Top-32 CWT scales, 3-window split.
 - **Condition-residual correction:** for each run's feature image, subtracted the mean image of all runs sharing the same (DOC x speed) condition — removes the DOC/speed signal that dominates and confounds Ra (Ra is near-perfectly correlated with DOC in this dataset), leaving only within-condition (feed-driven) variation.
-- **9-window split** instead of 3 — more training examples per run.
-- SMOTE applied to balance classes (class 0 had 19 runs vs 7 each for classes 1/2).
+- **Cascade conditioning:** DOC and speed are first predicted by their own best models, then those *predicted* (not ground-truth) labels are injected into the roughness classifier — avoids requiring true condition labels at inference time.
 
-**Techniques tried that did not beat this:** ground-truth DOC-conditioning (ceiling 66.7% even with the true condition given to the model — the residual-correction approach above is strictly better since it doesn't require condition labels at inference time), harmonic features (not attempted for roughness — not a speed-harmonic-driven signal), band-statistics features (50%, worse), plain 32x3/32x12 without residual correction (~75-83% ceiling).
+**Techniques tried that did not beat this:** ground-truth DOC-conditioning (ceiling 66.7% even with the true condition given to the model), harmonic features (not attempted for roughness — not a speed-harmonic-driven signal), band-statistics features (50%, worse), 32x12 / 9-window residual variant without cascade conditioning (previously misreported as 91.7% for `resnet18_lr0.001_smote` — does not reproduce; actual 83.3%, see correction note above).
 
 ---
 
