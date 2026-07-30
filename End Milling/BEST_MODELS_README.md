@@ -10,6 +10,11 @@ history logs).
 Speed is reported using only Shoulder-Milling-style techniques (no ensembling)
 to keep the two datasets' methodology directly comparable — see Notes.
 
+**Read §5 before citing the Speed/Feed Coarse ensemble numbers**: they do not
+survive retraining on alternate held-out splits (93.3%→46.7-66.7% for Speed,
+91.7%→16.7-33.3% for Feed Coarse) — treat them as single-split, not
+generalizable, accuracy.
+
 ---
 
 ## Summary
@@ -24,6 +29,15 @@ to keep the two datasets' methodology directly comparable — see Notes.
 **Correction note (previous revision):** the Feed Coarse and Roughness rows had originally listed configs (`feed_coarse resnet18_lr0.001_smote` at 91.7%, `roughness resnet18_lr0.001_smote` at 91.7%) that did **not** reproduce — they actually scored 58.3% and 83.3% respectively when the saved `_best.pt` weights were re-run on the held-out test split, traced to an older, unsaved ad-hoc verification script. That correction pass replaced them with the best single-model configs found across the full `eval_detailed_summary.csv` sweep (2113 checkpoints, 0 failures): 83.3% (feed_coarse, `resnet50`/`32x3_feedopt_raw3w_residual`) and 91.7% (roughness, `convnext_tiny`/`32x3_residual_roughness`/cascade).
 
 **Ensembling update (this revision):** after that correction, single-model feed_coarse was stuck at 83.3% despite an additional 16-run training sweep (9-window residual + cascade conditioning; best new config only reached 66.7%). Following the Shoulder Milling playbook of soft-vote averaging predictions across multiple independently-trained models (not just windows within one model), a pairwise search over all config pairs with individual run_soft_acc >= 0.73-0.75 found 2-model ensembles that push both Speed and Feed Coarse past 90%: Speed reaches 93.3% (14/15, up from 86.7%) and Feed Coarse reaches 91.7% (11/12, up from 83.3%). Both ensembles combine two feature-pipeline-consistent models (no harmonic/FFT features), keeping methodological parity with Shoulder Milling. Verified via `ensemble_eval.py`, which averages each model's per-run soft-vote probability vector (from `*_window_preds.csv`) and re-argmaxes. Roughness and DOC single-model numbers are unchanged (no ensembling was needed to clear their targets).
+
+**IMPORTANT — split-robustness check (this revision, see §5 below):** the 93.3%/91.7% ensemble numbers above hold **only on the one fixed test-run split used throughout this project**. Retraining the exact same 4 ensemble-member configs from scratch on two alternate, equally class-balanced held-out splits (`--split alt1` / `--split alt2`, mirroring Shoulder Milling's exp11/exp12 practice) collapses both ensembles to well below 90%, in some cases below chance:
+
+| Target | Standard split | Alt1 | Alt2 |
+|---|---|---|---|
+| Speed ensemble | 93.3% (14/15) | 46.7% (7/15) | 66.7% (10/15) |
+| Feed Coarse ensemble | 91.7% (11/12) | 33.3% (4/12) | 16.7% (2/12) |
+
+**This means the 93.3%/91.7% figures should NOT be presented as a config's true, generalizable accuracy — they are best-of-one-split numbers**, exactly the failure mode Shoulder Milling's own exp11/exp12 analysis warned about (their headline cascade/SMOTE numbers similarly did not survive a different split). Report these fixed-split numbers only alongside this caveat, and prefer the split-robustness section (§5) as the honest characterization of these configs. See §5 for full detail and next steps.
 
 ---
 
@@ -87,6 +101,21 @@ Note: an ensemble of this model with a novel harmonic-feature model (FFT amplitu
 - Top-32 CWT scales selected for DOC specifically (`docopt` scale selection), using the raw-window (`raw3w`) construction variant of the 3-window split.
 - SMOTE applied for class balance.
 - Consistent with the general finding (also seen in Shoulder Milling) that DOC and Speed carry the strongest, least-confounded signal in the feature set — DOC reaches a clean ceiling with standard techniques.
+
+---
+
+## 5. Split-robustness check (Speed and Feed Coarse ensembles)
+
+Mirroring Shoulder Milling's exp11/exp12 practice of checking whether a "best" config's accuracy survives a different held-out set, two new alternate splits were added this session: `SPEED_TEST_RUNS_ALT1`/`ALT2` and `FEED_COARSE_TEST_RUNS_ALT1`/`ALT2` (defined in `cnn_model/cnn_train.py`, selectable via `cnn_train_32x3.py --split alt1`/`alt2`). Speed's 9-runs-per-class pool divides evenly, so `SPEED_TEST_RUNS` + `ALT1` + `ALT2` form a clean 3-way partition of all 45 runs (each run is "test" in exactly one of the 3 splits). Feed Coarse's per-class run pools are highly unbalanced (15/21/9 runs for low/med/high); the "high" class only has 9 runs total (4 already in the standard split, leaving 5), so `ALT1`/`ALT2` for that one class share 3 of their 4 test runs — every other class's alt runs are fully disjoint.
+
+The 4 checkpoints making up the two >90% ensembles (speed: `32x12_9win/resnet18_lr0.001_nosmote` + `32x3/resnet18_lr0.001_nosmote`; feed_coarse: `32x3_feedopt_9win/convnext_tiny_lr0.001` + `32x3_feedopt_raw9w_residual/resnet50_lr0.001`) were retrained from scratch (same arch/lr/hyperparameters, only the held-out split changed) under both alt splits, then re-ensembled with `ensemble_eval.py`:
+
+| Target | Standard | Alt1 | Alt2 |
+|---|---|---|---|
+| Speed ensemble | **93.3%** (14/15) | 46.7% (7/15) | 66.7% (10/15) |
+| Feed Coarse ensemble | **91.7%** (11/12) | 33.3% (4/12) | 16.7% (2/12) |
+
+**Conclusion:** neither ensemble generalizes past its one fixed split — accuracy drops by 27-75 percentage points on the alternate splits, in Feed Coarse's case falling to worse than the 33% random-guess baseline for a 3-class problem. This is the same pattern Shoulder Milling found for its own "best" cascade/SMOTE configs: single-split accuracy numbers in this size of dataset (12-15 test runs) are not a reliable estimate of true generalization, and the >90% figures reported above should be read as "achievable on a favorably-chosen split" rather than "the model's real-world accuracy." A trustworthy number would require either (a) averaging accuracy across many random splits / leave-one-condition-out CV (as Shoulder Milling's `cv_evaluate.py` does), or (b) a genuinely held-out validation set collected independently of the run pool used for all split definitions — neither has been done here. Future work on this dataset should prioritize implementing an honest cross-validation harness (Shoulder Milling's `cv_evaluate.py`/`cv_exp_splits.py` pattern) over further single-split accuracy chasing.
 
 ---
 

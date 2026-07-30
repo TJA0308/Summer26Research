@@ -89,7 +89,12 @@ def process_one_checkpoint(model_dir: Path, target: str, hist_path: Path, only_m
     run_tag = hist.get("run_tag", "") or ""
     split = hist.get("split", "standard")
     cascading = conditioned or cascade_predicted
-    test_runs = spec["test_runs_balanced"] if split == "balanced" else spec["test_runs_standard"]
+    test_runs = {
+        "standard": spec["test_runs_standard"],
+        "balanced": spec["test_runs_balanced"],
+        "alt1": spec.get("test_runs_alt1"),
+        "alt2": spec.get("test_runs_alt2"),
+    }[split]
 
     try:
         if cascading:

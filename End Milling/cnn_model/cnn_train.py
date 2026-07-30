@@ -155,6 +155,43 @@ DOC_TEST_RUNS_12         = DOC_TEST_RUNS        # 12 test (4/class × 3 DOC)
 RA_TEST_RUNS             = RA_TEST_RUNS_12      # 12 test (4/class × 3 Ra)
 FEED_COARSE_TEST_RUNS_12 = FEED_COARSE_TEST_RUNS  # 12 test (4/class × 3 feed)
 
+# ── Alternate splits (mirrors Shoulder Milling's exp11/exp12 practice of
+# checking whether a "best" config's accuracy survives a different held-out
+# set, not just the one fixed split used throughout the rest of this
+# project). SPEED_TEST_RUNS_ALT1/ALT2 exactly 3-fold-partition all 45 runs
+# together with SPEED_TEST_RUNS (each run appears as "test" in exactly one
+# of the 3 folds) since speed's 9-runs-per-class pool divides evenly by 3.
+# FEED_COARSE's per-class run pools are highly unbalanced (15/21/9 runs for
+# low/med/high) so a clean 3-way partition isn't possible for the "high"
+# class (only 9 runs total, 4 already in FEED_COARSE_TEST_RUNS, leaving 5)
+# -- ALT1 and ALT2 for that class share 3 of their 4 test runs as a result;
+# every other class's ALT1/ALT2 runs are fully disjoint from each other and
+# from FEED_COARSE_TEST_RUNS.
+SPEED_TEST_RUNS_ALT1 = {
+    "run7", "run8", "run23",       # 1500 rpm
+    "run10", "run11", "run25",     # 2000 rpm
+    "run13", "run14", "run29",     # 3000 rpm
+    "run1", "run3", "run17",       # 4000 rpm
+    "run4", "run6", "run20",       # 5000 rpm
+}
+SPEED_TEST_RUNS_ALT2 = {
+    "run24", "run38", "run39",     # 1500 rpm
+    "run26", "run41", "run42",     # 2000 rpm
+    "run30", "run44", "run45",     # 3000 rpm
+    "run18", "run32", "run33",     # 4000 rpm
+    "run21", "run34", "run35",     # 5000 rpm
+}
+FEED_COARSE_TEST_RUNS_ALT1 = {
+    "run8", "run10", "run11", "run22",     # low
+    "run1", "run2", "run4", "run12",       # med
+    "run6", "run18", "run20", "run33",     # high
+}
+FEED_COARSE_TEST_RUNS_ALT2 = {
+    "run23", "run26", "run28", "run38",    # low
+    "run14", "run15", "run16", "run19",    # med
+    "run18", "run20", "run33", "run35",    # high (overlaps ALT1 by 3 runs)
+}
+
 
 def seed_everything(seed):
     random.seed(seed)

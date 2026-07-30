@@ -112,8 +112,10 @@ sys.path.insert(0, str(HERE.parent))   # repo root -- for cond_prior (below)
 
 from cnn_train import (   # noqa: E402  (repo-local import, path set above)
     SPEED_LABELS, SPEED_NAMES, SPEED_TEST_RUNS, SPEED_TEST_RUNS_BALANCED,
+    SPEED_TEST_RUNS_ALT1, SPEED_TEST_RUNS_ALT2,
     DOC_LABELS, DOC_NAMES, DOC_TEST_RUNS, DOC_TEST_RUNS_12,
     FEED_COARSE_LABELS, FEED_COARSE_NAMES, FEED_COARSE_TEST_RUNS, FEED_COARSE_TEST_RUNS_12,
+    FEED_COARSE_TEST_RUNS_ALT1, FEED_COARSE_TEST_RUNS_ALT2,
     FEED_LABELS, FEED_NAMES, FEED_TEST_RUNS,
     RA_LABELS, RA_NAMES, RA_TEST_RUNS, RA_TEST_RUNS_12,
     ScalogramDataset, ConditionedScalogramDataset,
@@ -131,6 +133,7 @@ TARGETS = {
         "num_classes": 5, "class_names": SPEED_NAMES,
         "label_map": SPEED_LABELS,
         "test_runs_standard": SPEED_TEST_RUNS, "test_runs_balanced": SPEED_TEST_RUNS_BALANCED,
+        "test_runs_alt1": SPEED_TEST_RUNS_ALT1, "test_runs_alt2": SPEED_TEST_RUNS_ALT2,
         "smote_csv": "smote_speed_labels.csv",
     },
     "doc": {
@@ -143,6 +146,7 @@ TARGETS = {
         "num_classes": 3, "class_names": FEED_COARSE_NAMES,
         "label_map": FEED_COARSE_LABELS,
         "test_runs_standard": FEED_COARSE_TEST_RUNS, "test_runs_balanced": FEED_COARSE_TEST_RUNS_12,
+        "test_runs_alt1": FEED_COARSE_TEST_RUNS_ALT1, "test_runs_alt2": FEED_COARSE_TEST_RUNS_ALT2,
         "smote_csv": "smote_feed_coarse_labels.csv",
     },
     "feed": {
@@ -637,8 +641,11 @@ def main():
     parser.add_argument("--run_tag", default="",
                         help="Optional filename suffix; also used to locate "
                              "<parent>_pred_<scalo_tag>_<run_tag>.csv for --cascade_predicted")
-    parser.add_argument("--split", default="standard", choices=["standard", "balanced"],
-                        help="Which *_TEST_RUNS set from cnn_train.py to use")
+    parser.add_argument("--split", default="standard", choices=["standard", "balanced", "alt1", "alt2"],
+                        help="Which *_TEST_RUNS set from cnn_train.py to use. alt1/alt2 (speed, "
+                             "feed_coarse only) are alternate held-out sets for checking whether a "
+                             "config's accuracy survives a different split, mirroring Shoulder "
+                             "Milling's exp11/exp12 splits.")
     parser.add_argument("--conditioned", action="store_true",
                         help="feed_coarse/feed/roughness only: condition on GROUND-TRUTH speed+doc")
     parser.add_argument("--cascade_predicted", action="store_true",
@@ -680,7 +687,14 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     spec = TARGETS[args.target]
-    test_runs = spec["test_runs_balanced"] if args.split == "balanced" else spec["test_runs_standard"]
+    if args.split in ("alt1", "alt2") and f"test_runs_{args.split}" not in spec:
+        raise SystemExit(f"--split {args.split} is only defined for speed/feed_coarse, not {args.target}")
+    test_runs = {
+        "standard": spec["test_runs_standard"],
+        "balanced": spec["test_runs_balanced"],
+        "alt1": spec.get("test_runs_alt1"),
+        "alt2": spec.get("test_runs_alt2"),
+    }[args.split]
     print(f"Device    : {device}")
     print(f"Target    : {args.target}  ({spec['num_classes']} classes)")
     print(f"Img dir   : {img_dir}")
