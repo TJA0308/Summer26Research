@@ -36,6 +36,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf-16"
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import precision_recall_fscore_support
 
 sys.path.insert(0, str(Path(__file__).parent))
 from generate_window_results import TARGETS, process_one_checkpoint   # noqa: E402
@@ -119,6 +120,29 @@ def _summary(results):
     return win_correct, len(all_preds), n_hard, n_soft, n_runs
 
 
+def class_metrics(results, class_names, vote_key="soft_vote"):
+    """Per-class precision/recall/F1/support at run level (default: soft-vote
+    predictions), plus macro-averaged totals. zero_division=0 so classes with
+    no predicted/true instances in a small test split report 0 rather than
+    raising/warning -- run counts here are small enough (9-15) for that to
+    happen routinely."""
+    labels = sorted(class_names.keys())
+    y_true = [r["true_label"] for r in results]
+    y_pred = [r[vote_key] for r in results]
+    precision, recall, f1, support = precision_recall_fscore_support(
+        y_true, y_pred, labels=labels, zero_division=0)
+    per_class = [
+        {"label": lbl, "name": class_names[lbl], "precision": precision[i],
+         "recall": recall[i], "f1": f1[i], "support": int(support[i])}
+        for i, lbl in enumerate(labels)
+    ]
+    macro = {
+        "precision": float(np.mean(precision)), "recall": float(np.mean(recall)),
+        "f1": float(np.mean(f1)),
+    }
+    return per_class, macro
+
+
 def print_table(results, class_names, n_windows):
     run_w  = max(6, max(len(str(r["run"])) for r in results))
     w_cols = "  ".join(f"w{i+1:>2}" for i in range(n_windows))
@@ -139,6 +163,13 @@ def print_table(results, class_names, n_windows):
     print(f"  Window accuracy       : {win_correct}/{n_windows_total} = {win_correct/n_windows_total*100:.1f}%")
     print(f"  Run hard-vote accuracy: {n_hard}/{n_runs} = {n_hard/n_runs*100:.1f}%")
     print(f"  Run soft-vote accuracy: {n_soft}/{n_runs} = {n_soft/n_runs*100:.1f}%")
+
+    per_class, macro = class_metrics(results, class_names)
+    print(f"\n  Per-class report (run-level, soft-vote):")
+    print(f"  {'Class':<10}  {'Precision':>9}  {'Recall':>9}  {'F1':>9}  {'Support':>7}")
+    for c in per_class:
+        print(f"  {c['name']:<10}  {c['precision']:>9.3f}  {c['recall']:>9.3f}  {c['f1']:>9.3f}  {c['support']:>7}")
+    print(f"  {'macro avg':<10}  {macro['precision']:>9.3f}  {macro['recall']:>9.3f}  {macro['f1']:>9.3f}")
 
 
 def to_markdown(results, class_names, model_name, target, scalo_tag, arch, n_windows):
@@ -164,6 +195,18 @@ def to_markdown(results, class_names, model_name, target, scalo_tag, arch, n_win
         f"Run hard-vote accuracy: **{n_hard/n_runs*100:.1f}%** ({n_hard}/{n_runs})",
         f"Run soft-vote accuracy: **{n_soft/n_runs*100:.1f}%** ({n_soft}/{n_runs})",
     ]
+
+    per_class, macro = class_metrics(results, class_names)
+    lines += [
+        "",
+        "Per-class report (run-level, soft-vote):",
+        "",
+        "| Class | Precision | Recall | F1 | Support |",
+        "|-------|-----------|--------|----|---------|",
+    ]
+    for c in per_class:
+        lines.append(f"| {c['name']} | {c['precision']:.3f} | {c['recall']:.3f} | {c['f1']:.3f} | {c['support']} |")
+    lines.append(f"| **macro avg** | **{macro['precision']:.3f}** | **{macro['recall']:.3f}** | **{macro['f1']:.3f}** | |")
     return "\n".join(lines)
 
 
@@ -276,13 +319,23 @@ def run_all(target_filter, regenerate, summary_csv_path):
                 win_correct, n_windows_total, n_hard, n_soft, n_runs = _summary(results)
                 window_acc, hard_acc, soft_acc = (
                     win_correct / n_windows_total, n_hard / n_runs, n_soft / n_runs)
+                spec = TARGETS[target]
+                _, macro_soft = class_metrics(results, spec["class_names"], vote_key="soft_vote")
+                _, macro_hard = class_metrics(results, spec["class_names"], vote_key="hard_vote")
                 print(f"  OK {model_dir.name}/{stem}: "
-                      f"window={window_acc:.3f}  hard={hard_acc:.3f}  soft={soft_acc:.3f}")
+                      f"window={window_acc:.3f}  hard={hard_acc:.3f}  soft={soft_acc:.3f}  "
+                      f"soft_f1={macro_soft['f1']:.3f}")
                 rows.append({
                     "target": target, "img_dir": img_dir_name, "arch": arch, "lr": lr,
                     "run_tag": run_tag, "n_runs": n_runs, "n_windows": n_windows_total,
                     "window_acc": round(window_acc, 4), "run_hard_acc": round(hard_acc, 4),
                     "run_soft_acc": round(soft_acc, 4),
+                    "precision_macro_soft": round(macro_soft["precision"], 4),
+                    "recall_macro_soft": round(macro_soft["recall"], 4),
+                    "f1_macro_soft": round(macro_soft["f1"], 4),
+                    "precision_macro_hard": round(macro_hard["precision"], 4),
+                    "recall_macro_hard": round(macro_hard["recall"], 4),
+                    "f1_macro_hard": round(macro_hard["f1"], 4),
                     "detailed_md": str(save_md.relative_to(ROOT)),
                 })
                 n_ok += 1

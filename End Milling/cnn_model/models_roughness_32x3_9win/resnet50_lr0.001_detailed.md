@@ -18,3 +18,12 @@
 Window accuracy: **75.9%** (82/108)
 Run hard-vote accuracy: **75.0%** (9/12)
 Run soft-vote accuracy: **75.0%** (9/12)
+
+Per-class report (run-level, soft-vote):
+
+| Class | Precision | Recall | F1 | Support |
+|-------|-----------|--------|----|---------|
+| Smooth (Ra<0.7) | 1.000 | 1.000 | 1.000 | 4 |
+| Medium (0.7-1.0) | 0.600 | 0.750 | 0.667 | 4 |
+| Rough (Ra>1.0) | 0.667 | 0.500 | 0.571 | 4 |
+| **macro avg** | **0.756** | **0.750** | **0.746** | |

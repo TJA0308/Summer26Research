@@ -21,3 +21,14 @@
 Window accuracy: **37.8%** (51/135)
 Run hard-vote accuracy: **40.0%** (6/15)
 Run soft-vote accuracy: **40.0%** (6/15)
+
+Per-class report (run-level, soft-vote):
+
+| Class | Precision | Recall | F1 | Support |
+|-------|-----------|--------|----|---------|
+| 1500 rpm | 0.250 | 0.333 | 0.286 | 3 |
+| 2000 rpm | 0.000 | 0.000 | 0.000 | 3 |
+| 3000 rpm | 0.000 | 0.000 | 0.000 | 3 |
+| 4000 rpm | 0.667 | 0.667 | 0.667 | 3 |
+| 5000 rpm | 0.600 | 1.000 | 0.750 | 3 |
+| **macro avg** | **0.303** | **0.400** | **0.340** | |
