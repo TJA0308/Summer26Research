@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import precision_recall_fscore_support
 
 HERE = Path(__file__).parent
 
@@ -32,6 +33,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--paths", nargs="+", required=True,
                          help="Paths to *_window_preds.csv files to ensemble")
+    parser.add_argument("--class_names", nargs="+", default=None,
+                         help="Optional class names (in label-index order) for the precision/recall report")
     args = parser.parse_args()
 
     all_run_probs = []
@@ -49,6 +52,7 @@ def main():
 
     runs = sorted(all_run_true.keys())
     n_correct = 0
+    y_true, y_pred = [], []
     print(f"Ensembling {len(args.paths)} configs over {len(runs)} runs:")
     for r in runs:
         avg_prob = np.mean([rp[r] for rp in all_run_probs], axis=0)
@@ -56,8 +60,20 @@ def main():
         true = all_run_true[r]
         ok = pred == true
         n_correct += ok
+        y_true.append(true)
+        y_pred.append(pred)
         print(f"  {r}: true={true} pred={pred} {'OK' if ok else 'WRONG'}  probs={np.round(avg_prob, 3)}")
     print(f"\nEnsemble run-level soft-vote accuracy: {n_correct}/{len(runs)} = {n_correct/len(runs):.4f}")
+
+    labels = sorted(set(y_true) | set(y_pred))
+    names = args.class_names if args.class_names else [str(l) for l in labels]
+    precision, recall, f1, support = precision_recall_fscore_support(
+        y_true, y_pred, labels=labels, zero_division=0)
+    print(f"\nPer-class report (ensemble, run-level soft-vote):")
+    print(f"  {'Class':<10}  {'Precision':>9}  {'Recall':>9}  {'F1':>9}  {'Support':>7}")
+    for i, lbl in enumerate(labels):
+        print(f"  {names[i]:<10}  {precision[i]:>9.3f}  {recall[i]:>9.3f}  {f1[i]:>9.3f}  {support[i]:>7}")
+    print(f"  {'macro avg':<10}  {np.mean(precision):>9.3f}  {np.mean(recall):>9.3f}  {np.mean(f1):>9.3f}")
 
 
 if __name__ == "__main__":

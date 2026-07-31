@@ -49,6 +49,8 @@ generalizable, accuracy.
 
 **Result:** 93.3% (14/15 test runs), up from the single-model best of 86.7% (13/15, `models_speed_32x3_speedopt_perdoc/resnet18_lr0.001_nosmote_best.pt`, per-DOC-normalized + Spearman scale selection — still the best single model, kept below for reference).
 
+**Precision/recall (ensemble, run-level, macro avg):** precision 0.950, recall 0.933, F1 0.931. Per-class: 1500rpm P=0.750/R=1.000, 2000rpm P=1.000/R=1.000, 3000rpm P=1.000/R=1.000, 4000rpm P=1.000/R=0.667, 5000rpm P=1.000/R=1.000 (support=3 runs/class). Computed via `ensemble_eval.py`'s per-class report.
+
 **Best single model (for reference):**
 - `scalograms_32x3_speedopt_perdoc/`, ResNet-18, lr=1e-3, no SMOTE, 86.7% (13/15).
 - Top-32 CWT scales (Mexican hat + Coiflet) selected by Spearman |rho| against speed.
@@ -69,6 +71,8 @@ Note: an ensemble of this model with a novel harmonic-feature model (FFT amplitu
 
 **Result:** 91.7% (11/12 test runs), up from the single-model best of 83.3% (10/12, `models_feed_coarse_32x3_feedopt_raw3w_residual/resnet50_lr0.001_best.pt` — still the best single model, kept below for reference).
 
+**Precision/recall (ensemble, run-level, macro avg):** precision 0.933, recall 0.917, F1 0.915. Per-class: Low P=1.000/R=1.000, Med P=1.000/R=0.750, High P=0.800/R=1.000 (support=4 runs/class). Computed via `ensemble_eval.py`'s per-class report.
+
 **Best single model (for reference):**
 - `scalograms_32x3_feedopt_raw3w_residual/`, ResNet-50, lr=1e-3, no run_tag (base training), 83.3% (10/12).
 - Top-32 CWT scales selected by Spearman |rho| against feed_coarse, raw-window (`raw3w`) 3-window construction.
@@ -84,6 +88,8 @@ Note: an ensemble of this model with a novel harmonic-feature model (FFT amplitu
 **Model:** ConvNeXt-Tiny, lr=1e-3, cascade-predicted DOC/speed conditioning, no SMOTE (run_tag `cascade_nosmote`; the `cascade_smote` variant of the same arch/lr/dir ties at the same accuracy)
 **Result:** 91.7% (11/12 test runs)
 
+**Precision/recall (run-level, macro avg):** precision 0.933, recall 0.917, F1 0.915 (from `eval_detailed_summary.csv`, `precision_macro_soft`/`recall_macro_soft`/`f1_macro_soft` columns).
+
 - Top-32 CWT scales, 3-window split.
 - **Condition-residual correction:** for each run's feature image, subtracted the mean image of all runs sharing the same (DOC x speed) condition — removes the DOC/speed signal that dominates and confounds Ra (Ra is near-perfectly correlated with DOC in this dataset), leaving only within-condition (feed-driven) variation.
 - **Cascade conditioning:** DOC and speed are first predicted by their own best models, then those *predicted* (not ground-truth) labels are injected into the roughness classifier — avoids requiring true condition labels at inference time.
@@ -97,6 +103,8 @@ Note: an ensemble of this model with a novel harmonic-feature model (FFT amplitu
 **Feature dir:** `scalograms_32x3_docopt_raw3w/`
 **Model:** ResNet-18, lr=1e-3, SMOTE
 **Result:** 100.0% (12/12 test runs)
+
+**Precision/recall (run-level, macro avg):** precision 1.000, recall 1.000, F1 1.000 (perfect classification on this test split).
 
 - Top-32 CWT scales selected for DOC specifically (`docopt` scale selection), using the raw-window (`raw3w`) construction variant of the 3-window split.
 - SMOTE applied for class balance.
