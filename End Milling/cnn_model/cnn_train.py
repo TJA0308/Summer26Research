@@ -181,6 +181,21 @@ SPEED_TEST_RUNS_ALT2 = {
     "run18", "run32", "run33",     # 4000 rpm
     "run21", "run34", "run35",     # 5000 rpm
 }
+# ALT3: unlike ALT1/ALT2 (which happen to be DOC-imbalanced -- e.g. ALT1's
+# 1500rpm test triplet is 2xDOC0.030 + 1xDOC0.060, no DOC0.015 run at all),
+# ALT3 is constructed to be DOC-balanced per class, same structural property
+# as SPEED_TEST_RUNS itself (exactly one test run per DOC level per class).
+# Built by taking, for each of the 15 (class, DOC) cells, the lower-numbered
+# of the two runs not already in SPEED_TEST_RUNS -- a deterministic rule
+# applied before any accuracy was known, not an accuracy-based selection.
+# Still fully disjoint from SPEED_TEST_RUNS, ALT1, and ALT2.
+SPEED_TEST_RUNS_ALT3 = {
+    "run7", "run23", "run38",      # 1500 rpm: DOC=0.030, 0.060, 0.015
+    "run10", "run25", "run41",     # 2000 rpm: DOC=0.030, 0.060, 0.015
+    "run13", "run29", "run44",     # 3000 rpm: DOC=0.030, 0.060, 0.015
+    "run1", "run17", "run32",      # 4000 rpm: DOC=0.015, 0.030, 0.060
+    "run4", "run20", "run34",      # 5000 rpm: DOC=0.015, 0.030, 0.060
+}
 FEED_COARSE_TEST_RUNS_ALT1 = {
     "run8", "run10", "run11", "run22",     # low
     "run1", "run2", "run4", "run12",       # med
