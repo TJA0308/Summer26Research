@@ -7,6 +7,16 @@ Shoulder Milling methodology. All accuracies below were re-verified with live
 inference on the held-out test runs (not read from possibly-stale training
 history logs).
 
+**Full per-config precision/recall/F1** for every sweep config referenced across the
+`Documentation/End Milling/` spreadsheets (not just the 4 final models below) is transcribed
+from `eval_detailed_summary.csv`'s already-computed `precision_macro_soft/recall_macro_soft/
+f1_macro_soft` (+`_hard`) columns into 4 appendices, one per Documentation spreadsheet:
+`appendix_base_prf1.md` (48 configs), `appendix_smote_cascading_prf1.md` (156),
+`appendix_residual_prf1.md` (688), `appendix_scale_selection_windowing_prf1.md` (1237).
+Together with the 4 final models below, every row of `eval_detailed_summary.csv` except the
+alt1/alt2 held-out-split experiment (documented separately) has precision/recall/F1 accounted
+for.
+
 Speed is reported using only Shoulder-Milling-style techniques (no ensembling)
 to keep the two datasets' methodology directly comparable — see Notes.
 
@@ -30,12 +40,14 @@ generalizable, accuracy.
 
 **Ensembling update (this revision):** after that correction, single-model feed_coarse was stuck at 83.3% despite an additional 16-run training sweep (9-window residual + cascade conditioning; best new config only reached 66.7%). Following the Shoulder Milling playbook of soft-vote averaging predictions across multiple independently-trained models (not just windows within one model), a pairwise search over all config pairs with individual run_soft_acc >= 0.73-0.75 found 2-model ensembles that push both Speed and Feed Coarse past 90%: Speed reaches 93.3% (14/15, up from 86.7%) and Feed Coarse reaches 91.7% (11/12, up from 83.3%). Both ensembles combine two feature-pipeline-consistent models (no harmonic/FFT features), keeping methodological parity with Shoulder Milling. Verified via `ensemble_eval.py`, which averages each model's per-run soft-vote probability vector (from `*_window_preds.csv`) and re-argmaxes. Roughness and DOC single-model numbers are unchanged (no ensembling was needed to clear their targets).
 
-**IMPORTANT — split-robustness check (this revision, see §5 below):** the 93.3%/91.7% ensemble numbers above hold **only on the one fixed test-run split used throughout this project**. Retraining the exact same 4 ensemble-member configs from scratch on two alternate, equally class-balanced held-out splits (`--split alt1` / `--split alt2`, mirroring Shoulder Milling's exp11/exp12 practice) collapses both ensembles to well below 90%, in some cases below chance:
+**IMPORTANT — split-robustness check (this revision, see §5 below):** the 93.3%/91.7% ensemble numbers above hold **only on the one fixed test-run split used throughout this project**. Retraining the exact same 4 ensemble-member configs from scratch on alternate, equally class-balanced held-out splits (`--split alt1`/`alt2`/`alt3`, mirroring Shoulder Milling's exp11/exp12 practice) collapses both ensembles to well below 90%, in some cases below chance:
 
-| Target | Standard split | Alt1 | Alt2 |
-|---|---|---|---|
-| Speed ensemble | 93.3% (14/15) | 46.7% (7/15) | 66.7% (10/15) |
-| Feed Coarse ensemble | 91.7% (11/12) | 33.3% (4/12) | 16.7% (2/12) |
+| Target | Standard split | Alt1 | Alt2 | Alt3 (DOC-balanced) |
+|---|---|---|---|---|
+| Speed ensemble | 93.3% (14/15) | 46.7% (7/15) | 66.7% (10/15) | 60.0% (9/15) |
+| Feed Coarse ensemble | 91.7% (11/12) | 33.3% (4/12) | 16.7% (2/12) | — |
+
+Alt3 was added specifically to test whether Alt1/Alt2's collapse was an artifact of their own DOC-level imbalance (Alt1's 1500rpm test triplet, for example, has no DOC=0.015 run at all, unlike the standard split which holds out exactly one run per DOC level per class). Alt3 restores that DOC-balance and still drops to 60.0% — ruling out DOC-imbalance as the explanation and confirming the non-generalization is a genuine small-dataset effect, not a split-construction artifact.
 
 **This means the 93.3%/91.7% figures should NOT be presented as a config's true, generalizable accuracy — they are best-of-one-split numbers**, exactly the failure mode Shoulder Milling's own exp11/exp12 analysis warned about (their headline cascade/SMOTE numbers similarly did not survive a different split). Report these fixed-split numbers only alongside this caveat, and prefer the split-robustness section (§5) as the honest characterization of these configs. See §5 for full detail and next steps.
 
@@ -114,16 +126,22 @@ Note: an ensemble of this model with a novel harmonic-feature model (FFT amplitu
 
 ## 5. Split-robustness check (Speed and Feed Coarse ensembles)
 
-Mirroring Shoulder Milling's exp11/exp12 practice of checking whether a "best" config's accuracy survives a different held-out set, two new alternate splits were added this session: `SPEED_TEST_RUNS_ALT1`/`ALT2` and `FEED_COARSE_TEST_RUNS_ALT1`/`ALT2` (defined in `cnn_model/cnn_train.py`, selectable via `cnn_train_32x3.py --split alt1`/`alt2`). Speed's 9-runs-per-class pool divides evenly, so `SPEED_TEST_RUNS` + `ALT1` + `ALT2` form a clean 3-way partition of all 45 runs (each run is "test" in exactly one of the 3 splits). Feed Coarse's per-class run pools are highly unbalanced (15/21/9 runs for low/med/high); the "high" class only has 9 runs total (4 already in the standard split, leaving 5), so `ALT1`/`ALT2` for that one class share 3 of their 4 test runs — every other class's alt runs are fully disjoint.
+Mirroring Shoulder Milling's exp11/exp12 practice of checking whether a "best" config's accuracy survives a different held-out set, alternate splits were added across two sessions: `SPEED_TEST_RUNS_ALT1`/`ALT2`/`ALT3` and `FEED_COARSE_TEST_RUNS_ALT1`/`ALT2` (defined in `cnn_model/cnn_train.py`, selectable via `cnn_train_32x3.py --split alt1`/`alt2`/`alt3`). Speed's 9-runs-per-class pool divides evenly, so `SPEED_TEST_RUNS` + `ALT1` + `ALT2` form a clean 3-way partition of all 45 runs (each run is "test" in exactly one of the 3 splits). Feed Coarse's per-class run pools are highly unbalanced (15/21/9 runs for low/med/high); the "high" class only has 9 runs total (4 already in the standard split, leaving 5), so `ALT1`/`ALT2` for that one class share 3 of their 4 test runs — every other class's alt runs are fully disjoint.
 
-The 4 checkpoints making up the two >90% ensembles (speed: `32x12_9win/resnet18_lr0.001_nosmote` + `32x3/resnet18_lr0.001_nosmote`; feed_coarse: `32x3_feedopt_9win/convnext_tiny_lr0.001` + `32x3_feedopt_raw9w_residual/resnet50_lr0.001`) were retrained from scratch (same arch/lr/hyperparameters, only the held-out split changed) under both alt splits, then re-ensembled with `ensemble_eval.py`:
+**Alt3 (speed only):** Alt1/Alt2 turned out to be DOC-imbalanced within every single speed class (e.g. Alt1's 1500rpm test triplet is 2×DOC=0.030 + 1×DOC=0.060, no DOC=0.015 run at all) — unlike the standard split, which deliberately holds out exactly one run per DOC level per class. Alt3 was constructed by a deterministic, pre-registered rule (for each of the 15 class×DOC cells, take the lower-numbered of the two runs not already in `SPEED_TEST_RUNS`) to restore that same DOC-balance property, testing whether Alt1/Alt2's collapse was simply an artifact of unbalanced DOC representation rather than genuine non-generalization.
 
-| Target | Standard | Alt1 | Alt2 |
-|---|---|---|---|
-| Speed ensemble | **93.3%** (14/15) | 46.7% (7/15) | 66.7% (10/15) |
-| Feed Coarse ensemble | **91.7%** (11/12) | 33.3% (4/12) | 16.7% (2/12) |
+The 4 checkpoints making up the two >90% ensembles (speed: `32x12_9win/resnet18_lr0.001_nosmote` + `32x3/resnet18_lr0.001_nosmote`; feed_coarse: `32x3_feedopt_9win/convnext_tiny_lr0.001` + `32x3_feedopt_raw9w_residual/resnet50_lr0.001`) were retrained from scratch (same arch/lr/hyperparameters, only the held-out split changed) under each alt split, then re-ensembled with `ensemble_eval.py`:
 
-**Conclusion:** neither ensemble generalizes past its one fixed split — accuracy drops by 27-75 percentage points on the alternate splits, in Feed Coarse's case falling to worse than the 33% random-guess baseline for a 3-class problem. This is the same pattern Shoulder Milling found for its own "best" cascade/SMOTE configs: single-split accuracy numbers in this size of dataset (12-15 test runs) are not a reliable estimate of true generalization, and the >90% figures reported above should be read as "achievable on a favorably-chosen split" rather than "the model's real-world accuracy." A trustworthy number would require either (a) averaging accuracy across many random splits / leave-one-condition-out CV (as Shoulder Milling's `cv_evaluate.py` does), or (b) a genuinely held-out validation set collected independently of the run pool used for all split definitions — neither has been done here. Future work on this dataset should prioritize implementing an honest cross-validation harness (Shoulder Milling's `cv_evaluate.py`/`cv_exp_splits.py` pattern) over further single-split accuracy chasing.
+| Target | Standard | Alt1 | Alt2 | Alt3 (DOC-balanced) |
+|---|---|---|---|---|
+| Speed ensemble | **93.3%** (14/15) | 46.7% (7/15) | 66.7% (10/15) | 60.0% (9/15) |
+| Feed Coarse ensemble | **91.7%** (11/12) | 33.3% (4/12) | 16.7% (2/12) | — (no DOC-balanced alt split defined for this target) |
+
+Speed ensemble under Alt3: macro precision 0.550, recall 0.600, F1 0.521 — well below the near-1.000 macro F1 implied by Standard's 14/15 accuracy. The 4000rpm class is missed completely (0/3), the same kind of single-class collapse seen in Alt1's 1500rpm class.
+
+**Verification note:** unlike Alt1/Alt2 (both ensemble members' `window_preds.csv`/`_detailed.md` committed alongside their history JSONs), only `models_speed_32x12_9win/resnet18_lr0.001_alt3_history.json`/`_best.pt` are present in the repo for Alt3 — no prediction CSV for that model, and no artifacts at all for the `32x3` member. The 32x12_9win model's own single-model accuracy (73.3%, 11/15, from its `history.json`) is consistent with the reported ensemble figure being well below Standard, but the exact 60.0%/9-15 ensemble number and its P/R/F1 are not independently reproducible from what's currently committed.
+
+**Conclusion:** neither ensemble generalizes past its one fixed split, and Alt3 rules out the most obvious counter-explanation — DOC-imbalance in Alt1/Alt2's construction — since a properly DOC-balanced alternate split (Alt3) still drops 33 points below Standard. Accuracy drops 27-75 percentage points across all three alternate splits, in Feed Coarse's case falling to worse than the 33% random-guess baseline for a 3-class problem. This is the same pattern Shoulder Milling found for its own "best" cascade/SMOTE configs: single-split accuracy numbers in this size of dataset (12-15 test runs) are not a reliable estimate of true generalization, and the >90% figures reported above should be read as "achievable on a favorably-chosen split" rather than "the model's real-world accuracy." A trustworthy number would require either (a) averaging accuracy across many random splits / leave-one-condition-out CV (as Shoulder Milling's `cv_evaluate.py` does), or (b) a genuinely held-out validation set collected independently of the run pool used for all split definitions — neither has been done here. Future work on this dataset should prioritize implementing an honest cross-validation harness (Shoulder Milling's `cv_evaluate.py`/`cv_exp_splits.py` pattern) over further single-split accuracy chasing.
 
 ---
 
