@@ -196,6 +196,19 @@ SPEED_TEST_RUNS_ALT3 = {
     "run1", "run17", "run32",      # 4000 rpm: DOC=0.015, 0.030, 0.060
     "run4", "run20", "run34",      # 5000 rpm: DOC=0.015, 0.030, 0.060
 }
+# ALT4: the complement of ALT3 within the same 30-run non-standard pool --
+# takes the higher-numbered of each (class, DOC) cell's two non-standard
+# runs (ALT3 took the lower-numbered one). Also DOC-balanced, fully disjoint
+# from SPEED_TEST_RUNS, ALT1, ALT2, and ALT3. Together, SPEED_TEST_RUNS +
+# ALT3 + ALT4 form a second clean 3-way, DOC-balanced partition of all 45
+# runs (distinct from the SPEED_TEST_RUNS + ALT1 + ALT2 partition).
+SPEED_TEST_RUNS_ALT4 = {
+    "run8", "run24", "run39",      # 1500 rpm: DOC=0.015, 0.030, 0.060
+    "run11", "run26", "run42",     # 2000 rpm: DOC=0.015, 0.030, 0.060
+    "run14", "run30", "run45",     # 3000 rpm: DOC=0.015, 0.030, 0.060
+    "run3", "run18", "run33",      # 4000 rpm: DOC=0.015, 0.030, 0.060
+    "run6", "run21", "run35",      # 5000 rpm: DOC=0.015, 0.030, 0.060
+}
 FEED_COARSE_TEST_RUNS_ALT1 = {
     "run8", "run10", "run11", "run22",     # low
     "run1", "run2", "run4", "run12",       # med

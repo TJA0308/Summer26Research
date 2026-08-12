@@ -112,7 +112,7 @@ sys.path.insert(0, str(HERE.parent))   # repo root -- for cond_prior (below)
 
 from cnn_train import (   # noqa: E402  (repo-local import, path set above)
     SPEED_LABELS, SPEED_NAMES, SPEED_TEST_RUNS, SPEED_TEST_RUNS_BALANCED,
-    SPEED_TEST_RUNS_ALT1, SPEED_TEST_RUNS_ALT2, SPEED_TEST_RUNS_ALT3,
+    SPEED_TEST_RUNS_ALT1, SPEED_TEST_RUNS_ALT2, SPEED_TEST_RUNS_ALT3, SPEED_TEST_RUNS_ALT4,
     DOC_LABELS, DOC_NAMES, DOC_TEST_RUNS, DOC_TEST_RUNS_12,
     FEED_COARSE_LABELS, FEED_COARSE_NAMES, FEED_COARSE_TEST_RUNS, FEED_COARSE_TEST_RUNS_12,
     FEED_COARSE_TEST_RUNS_ALT1, FEED_COARSE_TEST_RUNS_ALT2,
@@ -134,7 +134,7 @@ TARGETS = {
         "label_map": SPEED_LABELS,
         "test_runs_standard": SPEED_TEST_RUNS, "test_runs_balanced": SPEED_TEST_RUNS_BALANCED,
         "test_runs_alt1": SPEED_TEST_RUNS_ALT1, "test_runs_alt2": SPEED_TEST_RUNS_ALT2,
-        "test_runs_alt3": SPEED_TEST_RUNS_ALT3,
+        "test_runs_alt3": SPEED_TEST_RUNS_ALT3, "test_runs_alt4": SPEED_TEST_RUNS_ALT4,
         "smote_csv": "smote_speed_labels.csv",
     },
     "doc": {
@@ -642,12 +642,14 @@ def main():
     parser.add_argument("--run_tag", default="",
                         help="Optional filename suffix; also used to locate "
                              "<parent>_pred_<scalo_tag>_<run_tag>.csv for --cascade_predicted")
-    parser.add_argument("--split", default="standard", choices=["standard", "balanced", "alt1", "alt2", "alt3"],
+    parser.add_argument("--split", default="standard", choices=["standard", "balanced", "alt1", "alt2", "alt3", "alt4"],
                         help="Which *_TEST_RUNS set from cnn_train.py to use. alt1/alt2 (speed, "
                              "feed_coarse only) are alternate held-out sets for checking whether a "
                              "config's accuracy survives a different split, mirroring Shoulder "
-                             "Milling's exp11/exp12 splits. alt3 (speed only) is DOC-balanced like "
-                             "the standard split, unlike alt1/alt2 which are DOC-imbalanced.")
+                             "Milling's exp11/exp12 splits. alt3/alt4 (speed only) are DOC-balanced "
+                             "like the standard split, unlike alt1/alt2 which are DOC-imbalanced; "
+                             "alt3+alt4 form a second full partition of the 45 runs alongside "
+                             "standard, distinct from the standard+alt1+alt2 partition.")
     parser.add_argument("--conditioned", action="store_true",
                         help="feed_coarse/feed/roughness only: condition on GROUND-TRUTH speed+doc")
     parser.add_argument("--cascade_predicted", action="store_true",
@@ -689,7 +691,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     spec = TARGETS[args.target]
-    if args.split in ("alt1", "alt2", "alt3") and f"test_runs_{args.split}" not in spec:
+    if args.split in ("alt1", "alt2", "alt3", "alt4") and f"test_runs_{args.split}" not in spec:
         raise SystemExit(f"--split {args.split} is only defined for speed/feed_coarse, not {args.target}")
     test_runs = {
         "standard": spec["test_runs_standard"],
@@ -697,6 +699,7 @@ def main():
         "alt1": spec.get("test_runs_alt1"),
         "alt2": spec.get("test_runs_alt2"),
         "alt3": spec.get("test_runs_alt3"),
+        "alt4": spec.get("test_runs_alt4"),
     }[args.split]
     print(f"Device    : {device}")
     print(f"Target    : {args.target}  ({spec['num_classes']} classes)")
