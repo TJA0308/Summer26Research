@@ -140,6 +140,12 @@ TARGETS = {
         "test_runs_alt1": SPEED_TEST_RUNS_ALT1, "test_runs_alt2": SPEED_TEST_RUNS_ALT2,
         "test_runs_alt3": SPEED_TEST_RUNS_ALT3, "test_runs_alt4": SPEED_TEST_RUNS_ALT4,
         "test_runs_alt5": SPEED_TEST_RUNS_ALT5, "test_runs_alt6": SPEED_TEST_RUNS_ALT6,
+        # Aliased to RA_TEST_RUNS_ALT1/ALT2 (not speed's own splits): lets a
+        # speed model be trained held-out on EXACTLY roughness's alt1/alt2
+        # test runs, so predict_conditioning_32x3.py's parent predictions
+        # for roughness's cascade retrain don't leak roughness's held-out
+        # runs through a speed model that already trained on them.
+        "test_runs_rough_alt1": RA_TEST_RUNS_ALT1, "test_runs_rough_alt2": RA_TEST_RUNS_ALT2,
         "smote_csv": "smote_speed_labels.csv",
     },
     "doc": {
@@ -147,6 +153,8 @@ TARGETS = {
         "label_map": DOC_LABELS,
         "test_runs_standard": DOC_TEST_RUNS, "test_runs_balanced": DOC_TEST_RUNS_12,
         "test_runs_alt1": DOC_TEST_RUNS_ALT1, "test_runs_alt2": DOC_TEST_RUNS_ALT2,
+        # See speed's identical "test_runs_rough_alt1/2" comment above.
+        "test_runs_rough_alt1": RA_TEST_RUNS_ALT1, "test_runs_rough_alt2": RA_TEST_RUNS_ALT2,
         "smote_csv": "smote_doc_labels.csv",
     },
     "feed_coarse": {
@@ -651,7 +659,8 @@ def main():
                         help="Optional filename suffix; also used to locate "
                              "<parent>_pred_<scalo_tag>_<run_tag>.csv for --cascade_predicted")
     parser.add_argument("--split", default="standard",
-                        choices=["standard", "balanced", "alt1", "alt2", "alt3", "alt4", "alt5", "alt6"],
+                        choices=["standard", "balanced", "alt1", "alt2", "alt3", "alt4", "alt5", "alt6",
+                                 "rough_alt1", "rough_alt2"],
                         help="Which *_TEST_RUNS set from cnn_train.py to use, checked against "
                              "TARGETS[target]['test_runs_<split>'] (SystemExit if undefined for "
                              "this target). alt1/alt2 exist for speed, feed_coarse, doc, and "
@@ -659,9 +668,14 @@ def main():
                              "except feed_coarse's/roughness's smallest class, which shares a "
                              "handful of runs between alt1/alt2 themselves (never with standard) "
                              "due to limited pool size. alt3/alt4 exist for speed and feed_coarse; "
-                             "alt5/alt6 exist for speed only. Mirrors Shoulder Milling's exp11/exp12 "
-                             "practice of checking whether a config's accuracy survives a different "
-                             "held-out set.")
+                             "alt5/alt6 exist for speed only. rough_alt1/rough_alt2 exist for speed "
+                             "and doc only -- aliased to roughness's RA_TEST_RUNS_ALT1/ALT2, used to "
+                             "train a speed/doc parent model held out on exactly roughness's alt-split "
+                             "test runs before running predict_conditioning_32x3.py, so roughness's "
+                             "cascade-conditioned retrain under a new split doesn't leak its held-out "
+                             "runs through a parent model that already trained on them. Mirrors "
+                             "Shoulder Milling's exp11/exp12 practice of checking whether a config's "
+                             "accuracy survives a different held-out set.")
     parser.add_argument("--conditioned", action="store_true",
                         help="feed_coarse/feed/roughness only: condition on GROUND-TRUTH speed+doc")
     parser.add_argument("--cascade_predicted", action="store_true",
@@ -703,10 +717,10 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     spec = TARGETS[args.target]
-    if args.split.startswith("alt") and f"test_runs_{args.split}" not in spec:
+    if args.split not in ("standard", "balanced") and f"test_runs_{args.split}" not in spec:
         raise SystemExit(f"--split {args.split} is not defined for --target {args.target} "
                           f"(defined splits for this target: standard, balanced, "
-                          f"{', '.join(k.removeprefix('test_runs_') for k in spec if k.startswith('test_runs_alt'))})")
+                          f"{', '.join(k.removeprefix('test_runs_') for k in spec if k.startswith('test_runs_alt') or k.startswith('test_runs_rough'))})")
     test_runs = {
         "standard": spec["test_runs_standard"],
         "balanced": spec["test_runs_balanced"],
@@ -716,6 +730,8 @@ def main():
         "alt4": spec.get("test_runs_alt4"),
         "alt5": spec.get("test_runs_alt5"),
         "alt6": spec.get("test_runs_alt6"),
+        "rough_alt1": spec.get("test_runs_rough_alt1"),
+        "rough_alt2": spec.get("test_runs_rough_alt2"),
     }[args.split]
     print(f"Device    : {device}")
     print(f"Target    : {args.target}  ({spec['num_classes']} classes)")
