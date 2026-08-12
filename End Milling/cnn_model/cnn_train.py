@@ -220,6 +220,75 @@ FEED_COARSE_TEST_RUNS_ALT2 = {
     "run18", "run20", "run33", "run35",    # high (overlaps ALT1 by 3 runs)
 }
 
+# ── Relaxed-overlap alt splits (do not need to be 100% disjoint from the
+# standard split -- only >=50% of test runs need to differ). Extends the
+# split-robustness check to all four targets, not just speed/feed_coarse.
+# All are still 0% overlap with their own target's standard split (well
+# over the 50% bar); where a class's non-standard pool couldn't cover two
+# full fresh 4-run test sets, the shortfall is shared between the two new
+# alt splits themselves (never with standard) -- feed_coarse's "high" class
+# (9 runs total) and roughness's "medium"/"rough" classes (11 each).
+
+# SPEED_TEST_RUNS_ALT5/ALT6: a third DOC-balanced 3-way partition of the
+# same 6 non-standard runs/class used by ALT1-4, using a per-(class,DOC)-
+# pair selection pattern distinct from both ALT1/ALT2 (first-half/second-
+# half by run number) and ALT3/ALT4 (lower/higher within each DOC pair).
+SPEED_TEST_RUNS_ALT5 = {
+    "run7", "run24", "run38",      # 1500 rpm
+    "run10", "run26", "run41",     # 2000 rpm
+    "run13", "run30", "run44",     # 3000 rpm
+    "run1", "run18", "run32",      # 4000 rpm
+    "run4", "run21", "run34",      # 5000 rpm
+}
+SPEED_TEST_RUNS_ALT6 = {
+    "run8", "run23", "run39",      # 1500 rpm
+    "run11", "run25", "run42",     # 2000 rpm
+    "run14", "run29", "run45",     # 3000 rpm
+    "run3", "run17", "run33",      # 4000 rpm
+    "run6", "run20", "run35",      # 5000 rpm
+}
+
+FEED_COARSE_TEST_RUNS_ALT3 = {
+    "run38", "run40", "run41", "run43",    # low
+    "run34", "run39", "run42", "run44",    # med
+    "run18", "run20", "run33", "run35",    # high
+}
+FEED_COARSE_TEST_RUNS_ALT4 = {
+    "run22", "run23", "run26", "run28",    # low
+    "run27", "run29", "run30", "run32",    # med
+    "run6", "run20", "run33", "run35",     # high (overlaps ALT3 by 3 runs, never touches standard)
+}
+
+# DOC_TEST_RUNS_ALT1/ALT2: no prior alt split existed for DOC. 11
+# non-standard runs/class (15-run pool, 4 in standard) comfortably covers
+# two fresh 4-run test sets per class with runs to spare -- both fully
+# disjoint from DOC_TEST_RUNS and from each other.
+DOC_TEST_RUNS_ALT1 = {
+    "run2", "run3", "run4", "run6",        # DOC=0.015
+    "run8", "run9", "run10", "run11",      # DOC=0.030
+    "run23", "run24", "run26", "run27",    # DOC=0.060
+}
+DOC_TEST_RUNS_ALT2 = {
+    "run37", "run39", "run40", "run42",    # DOC=0.015
+    "run12", "run13", "run15", "run17",    # DOC=0.030
+    "run28", "run30", "run31", "run32",    # DOC=0.060
+}
+
+# RA_TEST_RUNS_ALT1/ALT2 (roughness): no prior alt split existed. Smooth
+# class (23 total, 19 non-standard) easily covers two fresh sets; Medium
+# and Rough (11 total each, 7 non-standard) force ALT1/ALT2 to share 1 run
+# each between themselves for those two classes (never with standard).
+RA_TEST_RUNS_ALT1 = {
+    "run1", "run2", "run3", "run4",        # Smooth
+    "run8", "run12", "run16", "run23",     # Medium
+    "run20", "run21", "run29", "run30",    # Rough
+}
+RA_TEST_RUNS_ALT2 = {
+    "run6", "run9", "run10", "run13",      # Smooth
+    "run8", "run24", "run26", "run31",     # Medium (overlaps ALT1 by run8)
+    "run20", "run33", "run35", "run36",    # Rough (overlaps ALT1 by run20)
+}
+
 
 def seed_everything(seed):
     random.seed(seed)
