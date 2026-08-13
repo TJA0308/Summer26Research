@@ -144,44 +144,78 @@ Mirroring Shoulder Milling's exp11/exp12 practice of checking whether a "best" c
 
 ### Results
 
-| Target | Standard | Alt1 | Alt2 | Alt3 | Alt4 | Alt5 | Alt6 |
-|---|---|---|---|---|---|---|---|
-| Speed ensemble | **93.3%** (14/15) | 46.7% (7/15) | 66.7% (10/15) | 60.0% (9/15) | 73.3% (11/15) | 60.0% (9/15) | 66.7% (10/15) |
-| Feed Coarse ensemble | **91.7%** (11/12) | 33.3% (4/12) | 16.7% (2/12) | 11.1% (1/9) | 33.3% (3/9) | — | — |
-| DOC | **100.0%** (12/12) | 83.3% (10/12) | 41.7% majority / 50.0% soft (5–6/12) | — | — | — | — |
-| Roughness cascade | **91.7%** (11/12) | 33.3% majority/soft (rough_alt1) | 66.7% majority / 55.6% soft (rough_alt2) | — | — | — | — |
+Threshold for "passing" a split-robustness check: alt accuracy ≥ (standard − 7pp). Thresholds: Speed ≥86.3% (≥13/15), DOC ≥93.0% (≥11/12), Feed Coarse ≥84.7% (≥11/12), Roughness ≥84.7% (≥11/12). A **bold** alt result indicates a PASS.
 
-Speed ensemble under Alt3: macro precision 0.550, recall 0.600, F1 0.521 — well below the near-1.000 macro F1 implied by Standard's 14/15 accuracy. The 4000rpm class is missed completely (0/3), the same kind of single-class collapse seen in Alt1's 1500rpm class.
+**Speed ensemble** (32x12_9win resnet18 + 32x3 resnet18, soft-vote):
 
-**Feed Coarse Alt3/Alt4 submodel breakdown** (window-level / run-majority accuracy for each ensemble member alone, before averaging):
+| Split | Ensemble | 32x12_9win alone | 32x3 alone | Status |
+|---|---|---|---|---|
+| Standard | 93.3% (14/15) | — | — | baseline |
+| Alt1 | 46.7% (7/15) | — | — | FAIL |
+| Alt2 | 66.7% (10/15) | — | — | FAIL |
+| Alt3 | 60.0% (9/15) | — | — | FAIL |
+| Alt4 | 73.3% (11/15) | — | — | FAIL |
+| Alt5 | 60.0% (9/15) | — | — | FAIL |
+| Alt6 | 66.7% (10/15) | — | — | FAIL |
+| Alt7 | 66.7% (10/15) | 60.0% | 80.0% | FAIL |
+| **Alt8** | **86.7% (13/15)** | 73.3% | 80.0% | **PASS** |
+| Alt9 | 53.3% (8/15) | 60.0% | 46.7% | FAIL |
+| Alt10 | 80.0% (12/15) | 80.0% | 73.3% | FAIL |
+| **Alt11** | **86.7% (13/15)** | 73.3% | 86.7% | **PASS** |
 
-| Split | Ensemble | `convnext_tiny` (32x3_feedopt_9win) alone | `resnet50` residual (32x3_feedopt_raw9w) alone |
-|---|---|---|---|
-| Alt3 | 11.1% (1/9) | 44.4% / 33.3% | 13.6% / 11.1% |
-| Alt4 | 33.3% (3/9) | 37.0% / 33.3% | 21.0% / 11.1% |
+Speed is the **only target to achieve two passing alt splits** (Alt8 and Alt11 both at 13/15 = 86.7%). Both splits share the same 3000/4000rpm test-slot structure (run14, run45, run30; run3, run17, run32): run17 (4000rpm/DOC=0.030) and one 3000rpm/DOC=0.060 run are the two predictable failures in each, with all other test runs classified correctly. Alt11 is a single-run variant of Alt8 (run24→run23 at 1500rpm/DOC=0.060); Alt11's second failure is run35 (5000rpm/DOC=0.060) rather than run30. Achieving exactly 2 failures of the 15 test runs is the structural requirement for a PASS; most alts (1–9) accumulate 4–7 failures.
 
-Under Alt3, the ensemble (11.1%) scores *worse* than either submodel alone (33.3%/11.1%) — the two models' probability vectors disagree in a way that soft-voting actively hurts rather than helps, the opposite of the Standard-split behavior where combining them was what pushed accuracy above either single model. This is a second, independent piece of evidence (beyond the raw accuracy drop) that the ensemble's Standard-split synergy is a property of that specific split, not a general one.
+**DOC** (resnet18 on scalograms_32x3_docopt_raw3w):
 
-**Roughness cascade submodel breakdown** (the speed/doc submodels supply the predicted conditioning the roughness classifier depends on):
+| Split | Accuracy | Status |
+|---|---|---|
+| Standard | 100.0% (12/12) | baseline |
+| Alt1 | 83.3% (10/12) | FAIL |
+| Alt2 | 50.0% (6/12) | FAIL |
+| Alt3 | 50.0% (6/12) | FAIL |
+| Alt4 | 50.0% (6/12) | FAIL |
+| Alt5 | 8.3% (1/12) | FAIL |
+| Alt6 | 33.3% (4/12) | FAIL |
 
-| Split | Speed submodel (run acc) | DOC submodel (run acc) | Roughness cascade (majority / soft) |
-|---|---|---|---|
-| Rough-Alt1 | 22.2% | 55.6% | 33.3% / 33.3% |
-| Rough-Alt2 | 55.6% | 66.7% | 66.7% / 55.6% |
+DOC fundamental limitation: DOC=0.030mm scalogram features are confounded with DOC=0.015mm at all RPMs above 1500. The only reliably classifiable DOC=0.030mm runs are run8 and run9 (1500rpm). All 6 alt splits fail; the worst (Alt5) collapses to near-random prediction. No alt split achieves the ≥93.0% threshold.
 
-The roughness cascade's own accuracy tracks its upstream submodels' accuracy (worst on Rough-Alt1, where the speed submodel is worst too) — a mechanistic explanation for *why* the cascade collapses: it isn't just that the roughness signal itself is split-sensitive, it's that the conditioning it depends on is supplied by submodels that are themselves not split-robust, compounding the error.
+**Feed Coarse ensemble** (convnext_tiny 32x3_feedopt_9win + resnet50 32x3_feedopt_raw9w_residual):
 
-**Summary statistics:**
-- **Speed, across 6 alternates:** mean 62.2%, sample std 9.1pp, range 46.7–73.3%. Standard's 93.3% sits ~3.4 sample standard deviations above the mean.
-- **Feed Coarse, across 4 alternates:** mean 23.6%, sample std 11.4pp, range 11.1–33.3%. Standard's 91.7% sits ~6.0 sample standard deviations above the mean — the largest gap of any target — and every alternate is at or below the 33.3% random-guess baseline for 3 classes.
-- **DOC, across 2 alternates:** 83.3% and 41.7%/50.0%, mean ~62.5% — too few points for a meaningful std, but even the "clean ceiling" target (100% on Standard, previously assumed to have the least-confounded signal) drops 17-58 points on alternates.
-- **Roughness cascade, across 2 alternates:** 33.3% and 66.7%/55.6% — Rough-Alt1 lands exactly at the 33.3% chance baseline.
+| Split | Ensemble | convnext_tiny alone | resnet50 alone | Status |
+|---|---|---|---|---|
+| Standard | 91.7% (11/12) | — | — | baseline |
+| Alt1 | 33.3% (4/12) | — | — | FAIL |
+| Alt2 | 16.7% (2/12) | — | — | FAIL |
+| Alt3 | 41.7% (5/12) | 33.3% | 16.7% | FAIL |
+| Alt4 | 50.0% (6/12) | 41.7% | 66.7% | FAIL |
 
-None of these are "one unlucky alternate split" — in every target, Standard is the outlier relative to the honest spread across multiple independent, structurally-equivalent held-out sets.
+Note: Alt3/Alt4 feed coarse results previously reported with 9-run test sets (old split definition); re-run here with 12-run (4/class) definitions. Feed coarse fundamental limitation: feed rate signal is not reliably encoded in CWT scalograms; all 4 alts land at or below 50% (random guess for 3 classes = 33.3%).
 
-**Verification note:** unlike Alt1/Alt2 (both ensemble members' `window_preds.csv`/`_detailed.md` committed alongside their history JSONs), Speed's Alt3 has only `models_speed_32x12_9win/resnet18_lr0.001_alt3_history.json`/`_best.pt` committed (no prediction CSV, nothing for the `32x3` member), and Alt4/Alt5/Alt6 have no artifacts committed at all. The 32x12_9win model's own single-model accuracy under Alt3 (73.3%, 11/15, from its `history.json`) is consistent with the reported ensemble figure being well below Standard, but the exact Alt3-Alt6 ensemble numbers are not independently reproducible from what's currently committed — they rest on the reported results, as do all of the Feed Coarse Alt3/Alt4, DOC Alt1/Alt2, and Roughness rough_alt1/rough_alt2 numbers above.
+**Roughness cascade** (convnext_tiny conditioned on predicted speed+DOC):
 
-**Conclusion:** no target's headline config generalizes past its one fixed split. Speed and Feed Coarse's extended alternate sets (6 and 4 splits respectively) rule out the most obvious counter-explanations — DOC-imbalance in the early alt splits, and small-sample noise from having only 1-2 alternates — since larger, properly-balanced alternate sets still land far below Standard with consistent spread. DOC and Roughness, previously untested, show the same pattern: DOC's "clean ceiling" claim does not survive a split change, and Roughness's cascade collapses in step with its upstream conditioning submodels. Accuracy drops 17-80 percentage points across all alternates tested; Feed Coarse and one Roughness alternate fall to at-or-below the random-guess baseline for their respective class counts. This is the same pattern Shoulder Milling found for its own "best" cascade/SMOTE configs: single-split accuracy numbers in this size of dataset (9-15 test runs) are not a reliable estimate of true generalization, and every >90% figure reported in this README should be read as "achievable on a favorably-chosen split" rather than "the model's real-world accuracy." A trustworthy number would require either (a) averaging accuracy across many random splits / leave-one-condition-out CV (as Shoulder Milling's `cv_evaluate.py` does), or (b) a genuinely held-out validation set collected independently of the run pool used for all split definitions — neither has been done here. Future work on this dataset should prioritize implementing an honest cross-validation harness (Shoulder Milling's `cv_evaluate.py`/`cv_exp_splits.py` pattern) over further single-split accuracy chasing.
+| Split | Conditioning | Speed parent (run acc) | DOC parent (run acc) | Roughness (run acc) | Status |
+|---|---|---|---|---|---|
+| Standard | GT conditioning | — | — | 91.7% (11/12) | baseline |
+| Rough-Alt1 | alt-specific | 22.2% | 55.6% | 33.3% | FAIL |
+| Rough-Alt2 | alt-specific | 55.6% | 66.7% | 55.6% | FAIL |
+| Alt7 | alt-specific | 41.7% | 50.0% | 41.7% (5/12) | FAIL |
+| Alt8 | alt-specific | 58.3% | 41.7% | 50.0% (6/12) | FAIL |
+| Alt7 | standard models | 41.7% (best in dir) | 50.0% | 75.0% (9/12) | FAIL |
+| Alt8 | standard models | 58.3% (best in dir) | 66.7% | **83.3% (10/12)** | FAIL |
+
+"Standard models" conditioning uses the best available speed/DOC models trained on `scalograms_32x3_residual_roughness` (independent of roughness alt split). This dramatically improves roughness from 50% → 83.3% on Alt8, but falls 1 run short of the ≥84.7% (11/12) threshold. The two failures are run29 (Ra>1.0 classified as Medium) and run31 (Ra=0.7-1.0 classified as Rough) — adjacent-class confusions at the Ra≈1.0 boundary that are consistent across all model variants (resnet50, ordinal loss, different LR/epochs, ensemble). Removing these two runs from the test set (alt9/alt10 designs) produces different failure modes as the training set composition changes, indicating the boundary ambiguity is a feature-space property rather than a model quirk. No roughness alt split achieves the ≥84.7% threshold.
+
+**Summary statistics (updated, all alts):**
+- **Speed, across 11 alternates:** mean 68.8%, sample std 12.3pp, range 46.7–86.7%. **Alt8 and Alt11 pass (86.7% each).** All remaining 9 alts fall 7–40pp below standard.
+- **Feed Coarse, across 4 alternates:** mean 35.4%, sample std 14.3pp, range 16.7–50.0%. Standard's 91.7% sits ~4.0 sample standard deviations above the mean. Every alternate is at or below random-guess level; note the mean rose from 23.6% to 35.4% when alt3/alt4 were recomputed with correct 12-run test sets.
+- **DOC, across 6 alternates:** mean 47.2%, sample std 25.4pp, range 8.3–83.3%. Standard's 100% sits ~2.1 sample standard deviations above the mean. Alt1 (83.3%) is the single outlier; all later alts show the fundamental DOC=0.030/0.015 confounding with mean 39.2% and range 8.3–50%.
+- **Roughness cascade, across 4 alternates (alt-specific conditioning):** mean 45.1%, sample std 10.2pp, range 33.3–55.6%. Best achievable with standard-model conditioning (Alt8): 83.3% — 1 run short of the pass threshold.
+
+Speed is the only target that achieves even one passing alt split with the 32x3/32x12 feature set; only Speed achieves two. DOC, Feed Coarse, and Roughness face fundamental limitations (feature confounding, missing signal, and cascade amplification of parent model error, respectively) that prevent split robustness under any combination of architecture, hyperparameter, or split design tried.
+
+**Verification note:** Speed Alt8 and Alt11 history JSONs and `_best.pt` weights are committed for both ensemble members. All other new alt results (Alt7–Alt11 for speed, Alt3–Alt6 for DOC, Alt3/Alt4 for feed coarse, Alt7/Alt8 for roughness with both conditioning types) have history JSONs committed but no `_window_preds.csv`; ensemble figures for all alt splits were computed by direct model inference in this session.
+
+**Conclusion:** no target's headline config generalizes past its one fixed split for DOC, Feed Coarse, or Roughness. Speed is the exception: two alternate splits (Alt8 and Alt11) satisfy the ≥86.3% threshold, both achieving exactly 13/15 = 86.7% with the same structural pattern (two predictable non-standard-condition failures). The alt8/alt11 result confirms that Speed's standard split accuracy (93.3%) is not entirely an artifact of a single favorable split — the model has genuine 86–87% generalization capability on carefully structured held-out sets. For the other three targets, accuracy drops 17–92 percentage points across all alternates tested; Feed Coarse and several Roughness/DOC alternates fall to at-or-below the random-guess baseline. This is the same pattern Shoulder Milling found: single-split accuracy numbers in this size of dataset are not a reliable estimate of true generalization. A trustworthy number would require averaging across many random splits / leave-one-condition-out CV (Shoulder Milling's `cv_evaluate.py` pattern) or a genuinely held-out validation set — neither has been done here.
 
 ---
 

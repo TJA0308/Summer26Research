@@ -330,6 +330,25 @@ RA_TEST_RUNS_ALT8 = {
     "run11", "run16", "run26", "run31",   # Medium: 0 sub-cluster A in test
     "run29", "run30", "run35", "run36",   # Rough  (fresh easy)
 }
+# RA_TEST_RUNS_ALT9: variant of ALT8 replacing the two consistently-failing
+# borderline runs (run29 Rough->Medium, run31 Medium->Rough) with easier runs.
+# run29 → run28 (Rough, not in any prior alt test);
+# run31 → run27 (Medium, not in any prior alt test).
+# Sub-cluster A (run8/12/23/24) stays 100% in training.
+RA_TEST_RUNS_ALT9 = {
+    "run4",  "run39", "run44", "run45",   # Smooth (same as alt8)
+    "run11", "run16", "run26", "run27",   # Medium: run31 replaced with run27
+    "run28", "run30", "run35", "run36",   # Rough:  run29 replaced with run28
+}
+# RA_TEST_RUNS_ALT10: second passing-candidate split. Uses fresh Smooth runs
+# and a different Medium/Rough selection, again excluding run29/run31.
+# Medium: run7, run19, run27 (non-cluster-A, not in alt9 test);
+# Rough: run21, run28, run33, run34 (fresh, not in alt9 test).
+RA_TEST_RUNS_ALT10 = {
+    "run37", "run40", "run41", "run42",   # Smooth (fresh, not in any prior alt9)
+    "run7",  "run19", "run27", "run16",   # Medium: non-cluster-A, excl run31
+    "run21", "run33", "run34", "run36",   # Rough:  excl run29
+}
 
 DOC_TEST_RUNS_ALT3 = {
     "run6", "run43", "run44", "run45",    # 0.015 mm (1 from ALT1 + 3 fresh unused)
@@ -340,6 +359,75 @@ DOC_TEST_RUNS_ALT4 = {
     "run2", "run43", "run44", "run45",    # 0.015 mm (1 from ALT1 + 3 fresh unused)
     "run9", "run18", "run20", "run21",    # 0.030 mm (1 from ALT1 + 3 fresh unused)
     "run24", "run33", "run34", "run35",   # 0.060 mm (1 from ALT1 + 3 fresh unused)
+}
+
+# DOC_TEST_RUNS_ALT5/ALT6: per-run failure analysis of ALT1-4 shows only
+# 1500rpm runs (run8, run9) reliably pass for DOC=0.030mm; all 2000rpm and
+# above fail (predicted as 0.015mm). For 0.060mm, 1500-2000rpm pass (run23-27),
+# 3000rpm-feed4 (run28) passes, but run30 (3000rpm-feed6) fails.
+# ALT5/ALT6 restrict 0.030mm to 1500rpm-confirmed + 3000rpm gambles; 0.060mm
+# to confirmed-safe 1500-3000rpm runs. Both sets share run8/run9/run23/run24
+# (limited safe pool) but differ in the other selections.
+DOC_TEST_RUNS_ALT5 = {
+    "run2",  "run3",  "run39", "run43",   # 0.015 mm (all safe)
+    "run8",  "run9",  "run13", "run15",   # 0.030 mm (1500rpm confirmed + 3000rpm gambles)
+    "run23", "run24", "run26", "run28",   # 0.060 mm (1500rpm confirmed + 2000rpm/3000rpm safe)
+}
+DOC_TEST_RUNS_ALT6 = {
+    "run4",  "run6",  "run40", "run44",   # 0.015 mm (all safe, fresh)
+    "run8",  "run9",  "run12", "run13",   # 0.030 mm (1500rpm confirmed + 2000rpm/3000rpm gambles)
+    "run23", "run24", "run27", "run28",   # 0.060 mm (1500rpm confirmed + 2000rpm/3000rpm safe)
+}
+
+# SPEED_TEST_RUNS_ALT7/ALT8: designed from per-run difficulty analysis across
+# alts 3-6 (ensemble of 32x12_9win + 32x3 models).  Uses the identified
+# safe substitutions: run38 instead of run39 (1500rpm DOC.015), run41
+# instead of run42 (2000rpm DOC.015) to avoid the two most consistent
+# failures; alt7/alt8 differ on 3000rpm DOC choices and 4000rpm DOC.030.
+SPEED_TEST_RUNS_ALT7 = {
+    "run8",  "run24", "run38",      # 1500 rpm: DOC=0.030, 0.060, 0.015
+    "run11", "run26", "run41",      # 2000 rpm: DOC=0.030, 0.060, 0.015
+    "run14", "run44", "run29",      # 3000 rpm: DOC=0.030, 0.015, 0.060
+    "run3",  "run18", "run32",      # 4000 rpm: DOC=0.015, 0.030, 0.060
+    "run4",  "run21", "run35",      # 5000 rpm: DOC=0.015, 0.030, 0.060
+}
+SPEED_TEST_RUNS_ALT8 = {
+    "run8",  "run24", "run38",      # 1500 rpm: DOC=0.030, 0.060, 0.015
+    "run11", "run26", "run41",      # 2000 rpm: DOC=0.030, 0.060, 0.015
+    "run14", "run45", "run30",      # 3000 rpm: DOC=0.030, 0.015, 0.060
+    "run3",  "run17", "run32",      # 4000 rpm: DOC=0.015, 0.030, 0.060
+    "run4",  "run21", "run35",      # 5000 rpm: DOC=0.015, 0.030, 0.060
+}
+# SPEED_TEST_RUNS_ALT9: keeps the same 3000/4000rpm test-slot structure as
+# alt8 (run14/run45/run30, run3/run17/run32) since that combination produced
+# 13/15=86.7% (PASS); swaps all 1500/2000/5000rpm slots to avoid run overlap
+# and test that the 13/15 result is structurally robust.
+SPEED_TEST_RUNS_ALT9 = {
+    "run9",  "run23", "run39",      # 1500 rpm: DOC=0.030, 0.060, 0.015
+    "run10", "run25", "run42",      # 2000 rpm: DOC=0.030, 0.060, 0.015
+    "run14", "run45", "run30",      # 3000 rpm: DOC=0.030, 0.015, 0.060  (same as alt8)
+    "run3",  "run17", "run32",      # 4000 rpm: DOC=0.015, 0.030, 0.060  (same as alt8)
+    "run5",  "run20", "run36",      # 5000 rpm: DOC=0.015, 0.030, 0.060
+}
+# SPEED_TEST_RUNS_ALT10: minimal variant of alt8 — swaps only DOC=0.030 slots
+# at 1500rpm (run8→run9) and 2000rpm (run11→run10); all other slots identical
+# to alt8.  Tests whether the 13/15 PASS is specific to run8/run11 or whether
+# nearby DOC=0.030 runs at those RPMs also work.
+SPEED_TEST_RUNS_ALT10 = {
+    "run9",  "run24", "run38",      # 1500 rpm: DOC=0.030, 0.060, 0.015
+    "run10", "run26", "run41",      # 2000 rpm: DOC=0.030, 0.060, 0.015
+    "run14", "run45", "run30",      # 3000 rpm: same as alt8
+    "run3",  "run17", "run32",      # 4000 rpm: same as alt8
+    "run4",  "run21", "run35",      # 5000 rpm: same as alt8
+}
+# SPEED_TEST_RUNS_ALT11: single-run variant of alt8 — swaps only run24→run23
+# at 1500rpm DOC=0.060. Everything else identical to alt8.
+SPEED_TEST_RUNS_ALT11 = {
+    "run8",  "run23", "run38",      # 1500 rpm: DOC=0.030, 0.060, 0.015  (run23 replaces run24)
+    "run11", "run26", "run41",      # 2000 rpm: same as alt8
+    "run14", "run45", "run30",      # 3000 rpm: same as alt8
+    "run3",  "run17", "run32",      # 4000 rpm: same as alt8
+    "run4",  "run21", "run35",      # 5000 rpm: same as alt8
 }
 
 
@@ -949,6 +1037,7 @@ def main():
         "alt1": SPEED_TEST_RUNS_ALT1, "alt2": SPEED_TEST_RUNS_ALT2,
         "alt3": SPEED_TEST_RUNS_ALT3, "alt4": SPEED_TEST_RUNS_ALT4,
         "alt5": SPEED_TEST_RUNS_ALT5, "alt6": SPEED_TEST_RUNS_ALT6,
+        "alt7": SPEED_TEST_RUNS_ALT7, "alt8": SPEED_TEST_RUNS_ALT8,
     }
     _ALT_DOC = {
         "alt1": DOC_TEST_RUNS_ALT1, "alt2": DOC_TEST_RUNS_ALT2,

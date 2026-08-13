@@ -94,6 +94,16 @@ def process_one_checkpoint(model_dir: Path, target: str, hist_path: Path, only_m
         "balanced": spec["test_runs_balanced"],
         "alt1": spec.get("test_runs_alt1"),
         "alt2": spec.get("test_runs_alt2"),
+        "alt3": spec.get("test_runs_alt3"),
+        "alt4": spec.get("test_runs_alt4"),
+        "alt5": spec.get("test_runs_alt5"),
+        "alt6": spec.get("test_runs_alt6"),
+        "alt7": spec.get("test_runs_alt7"),
+        "alt8": spec.get("test_runs_alt8"),
+        "rough_alt1": spec.get("test_runs_rough_alt1"),
+        "rough_alt2": spec.get("test_runs_rough_alt2"),
+        "rough_alt7": spec.get("test_runs_rough_alt7"),
+        "rough_alt8": spec.get("test_runs_rough_alt8"),
     }[split]
 
     try:

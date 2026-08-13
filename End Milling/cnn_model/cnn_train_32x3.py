@@ -113,15 +113,18 @@ sys.path.insert(0, str(HERE.parent))   # repo root -- for cond_prior (below)
 from cnn_train import (   # noqa: E402  (repo-local import, path set above)
     SPEED_LABELS, SPEED_NAMES, SPEED_TEST_RUNS, SPEED_TEST_RUNS_BALANCED,
     SPEED_TEST_RUNS_ALT1, SPEED_TEST_RUNS_ALT2, SPEED_TEST_RUNS_ALT3, SPEED_TEST_RUNS_ALT4,
-    SPEED_TEST_RUNS_ALT5, SPEED_TEST_RUNS_ALT6,
+    SPEED_TEST_RUNS_ALT5, SPEED_TEST_RUNS_ALT6, SPEED_TEST_RUNS_ALT7, SPEED_TEST_RUNS_ALT8,
+    SPEED_TEST_RUNS_ALT9, SPEED_TEST_RUNS_ALT10, SPEED_TEST_RUNS_ALT11,
     DOC_LABELS, DOC_NAMES, DOC_TEST_RUNS, DOC_TEST_RUNS_12,
-    DOC_TEST_RUNS_ALT1, DOC_TEST_RUNS_ALT2,
+    DOC_TEST_RUNS_ALT1, DOC_TEST_RUNS_ALT2, DOC_TEST_RUNS_ALT3, DOC_TEST_RUNS_ALT4,
+    DOC_TEST_RUNS_ALT5, DOC_TEST_RUNS_ALT6,
     FEED_COARSE_LABELS, FEED_COARSE_NAMES, FEED_COARSE_TEST_RUNS, FEED_COARSE_TEST_RUNS_12,
     FEED_COARSE_TEST_RUNS_ALT1, FEED_COARSE_TEST_RUNS_ALT2,
     FEED_COARSE_TEST_RUNS_ALT3, FEED_COARSE_TEST_RUNS_ALT4,
     FEED_LABELS, FEED_NAMES, FEED_TEST_RUNS,
     RA_LABELS, RA_NAMES, RA_TEST_RUNS, RA_TEST_RUNS_12,
-    RA_TEST_RUNS_ALT1, RA_TEST_RUNS_ALT2,
+    RA_TEST_RUNS_ALT1, RA_TEST_RUNS_ALT2, RA_TEST_RUNS_ALT7, RA_TEST_RUNS_ALT8,
+    RA_TEST_RUNS_ALT9, RA_TEST_RUNS_ALT10,
     ScalogramDataset, ConditionedScalogramDataset,
     load_split, load_split_conditioned, load_smote_map, load_smote_cond_map,
     stratified_kfold, load_smote_full, smote_for_fold,
@@ -140,12 +143,17 @@ TARGETS = {
         "test_runs_alt1": SPEED_TEST_RUNS_ALT1, "test_runs_alt2": SPEED_TEST_RUNS_ALT2,
         "test_runs_alt3": SPEED_TEST_RUNS_ALT3, "test_runs_alt4": SPEED_TEST_RUNS_ALT4,
         "test_runs_alt5": SPEED_TEST_RUNS_ALT5, "test_runs_alt6": SPEED_TEST_RUNS_ALT6,
-        # Aliased to RA_TEST_RUNS_ALT1/ALT2 (not speed's own splits): lets a
-        # speed model be trained held-out on EXACTLY roughness's alt1/alt2
-        # test runs, so predict_conditioning_32x3.py's parent predictions
-        # for roughness's cascade retrain don't leak roughness's held-out
-        # runs through a speed model that already trained on them.
+        "test_runs_alt7": SPEED_TEST_RUNS_ALT7, "test_runs_alt8": SPEED_TEST_RUNS_ALT8,
+        "test_runs_alt9": SPEED_TEST_RUNS_ALT9,
+        "test_runs_alt10": SPEED_TEST_RUNS_ALT10,
+        "test_runs_alt11": SPEED_TEST_RUNS_ALT11,
+        # Aliased to RA_TEST_RUNS_ALT*/ALT* (not speed's own splits): lets a
+        # speed model be trained held-out on EXACTLY roughness's alt test runs,
+        # so predict_conditioning_32x3.py's parent predictions for roughness's
+        # cascade retrain don't leak roughness's held-out runs.
         "test_runs_rough_alt1": RA_TEST_RUNS_ALT1, "test_runs_rough_alt2": RA_TEST_RUNS_ALT2,
+        "test_runs_rough_alt7": RA_TEST_RUNS_ALT7, "test_runs_rough_alt8": RA_TEST_RUNS_ALT8,
+        "test_runs_rough_alt9": RA_TEST_RUNS_ALT9, "test_runs_rough_alt10": RA_TEST_RUNS_ALT10,
         "smote_csv": "smote_speed_labels.csv",
     },
     "doc": {
@@ -153,8 +161,12 @@ TARGETS = {
         "label_map": DOC_LABELS,
         "test_runs_standard": DOC_TEST_RUNS, "test_runs_balanced": DOC_TEST_RUNS_12,
         "test_runs_alt1": DOC_TEST_RUNS_ALT1, "test_runs_alt2": DOC_TEST_RUNS_ALT2,
-        # See speed's identical "test_runs_rough_alt1/2" comment above.
+        "test_runs_alt3": DOC_TEST_RUNS_ALT3, "test_runs_alt4": DOC_TEST_RUNS_ALT4,
+        "test_runs_alt5": DOC_TEST_RUNS_ALT5, "test_runs_alt6": DOC_TEST_RUNS_ALT6,
+        # See speed's identical "test_runs_rough_alt*" comment above.
         "test_runs_rough_alt1": RA_TEST_RUNS_ALT1, "test_runs_rough_alt2": RA_TEST_RUNS_ALT2,
+        "test_runs_rough_alt7": RA_TEST_RUNS_ALT7, "test_runs_rough_alt8": RA_TEST_RUNS_ALT8,
+        "test_runs_rough_alt9": RA_TEST_RUNS_ALT9, "test_runs_rough_alt10": RA_TEST_RUNS_ALT10,
         "smote_csv": "smote_doc_labels.csv",
     },
     "feed_coarse": {
@@ -181,6 +193,11 @@ TARGETS = {
         "label_map": RA_LABELS,
         "test_runs_standard": RA_TEST_RUNS, "test_runs_balanced": RA_TEST_RUNS_12,
         "test_runs_alt1": RA_TEST_RUNS_ALT1, "test_runs_alt2": RA_TEST_RUNS_ALT2,
+        "test_runs_alt7": RA_TEST_RUNS_ALT7, "test_runs_alt8": RA_TEST_RUNS_ALT8,
+        "test_runs_alt9": RA_TEST_RUNS_ALT9,
+        "test_runs_rough_alt9": RA_TEST_RUNS_ALT9,
+        "test_runs_alt10": RA_TEST_RUNS_ALT10,
+        "test_runs_rough_alt10": RA_TEST_RUNS_ALT10,
         "smote_csv": "smote_roughness_labels.csv",
     },
 }
@@ -660,7 +677,9 @@ def main():
                              "<parent>_pred_<scalo_tag>_<run_tag>.csv for --cascade_predicted")
     parser.add_argument("--split", default="standard",
                         choices=["standard", "balanced", "alt1", "alt2", "alt3", "alt4", "alt5", "alt6",
-                                 "rough_alt1", "rough_alt2"],
+                                 "alt7", "alt8", "alt9", "alt10", "alt11",
+                                 "rough_alt1", "rough_alt2", "rough_alt7", "rough_alt8",
+                                 "rough_alt9", "rough_alt10"],
                         help="Which *_TEST_RUNS set from cnn_train.py to use, checked against "
                              "TARGETS[target]['test_runs_<split>'] (SystemExit if undefined for "
                              "this target). alt1/alt2 exist for speed, feed_coarse, doc, and "
@@ -668,7 +687,7 @@ def main():
                              "except feed_coarse's/roughness's smallest class, which shares a "
                              "handful of runs between alt1/alt2 themselves (never with standard) "
                              "due to limited pool size. alt3/alt4 exist for speed and feed_coarse; "
-                             "alt5/alt6 exist for speed only. rough_alt1/rough_alt2 exist for speed "
+                             "alt5/alt6 exist for speed and doc. rough_alt1/rough_alt2 exist for speed "
                              "and doc only -- aliased to roughness's RA_TEST_RUNS_ALT1/ALT2, used to "
                              "train a speed/doc parent model held out on exactly roughness's alt-split "
                              "test runs before running predict_conditioning_32x3.py, so roughness's "
@@ -730,8 +749,17 @@ def main():
         "alt4": spec.get("test_runs_alt4"),
         "alt5": spec.get("test_runs_alt5"),
         "alt6": spec.get("test_runs_alt6"),
+        "alt7": spec.get("test_runs_alt7"),
+        "alt8": spec.get("test_runs_alt8"),
+        "alt9": spec.get("test_runs_alt9"),
+        "alt10": spec.get("test_runs_alt10"),
+        "alt11": spec.get("test_runs_alt11"),
         "rough_alt1": spec.get("test_runs_rough_alt1"),
         "rough_alt2": spec.get("test_runs_rough_alt2"),
+        "rough_alt7": spec.get("test_runs_rough_alt7"),
+        "rough_alt8": spec.get("test_runs_rough_alt8"),
+        "rough_alt9":  spec.get("test_runs_rough_alt9")  or spec.get("test_runs_alt9"),
+        "rough_alt10": spec.get("test_runs_rough_alt10") or spec.get("test_runs_alt10"),
     }[args.split]
     print(f"Device    : {device}")
     print(f"Target    : {args.target}  ({spec['num_classes']} classes)")

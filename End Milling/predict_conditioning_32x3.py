@@ -85,14 +85,14 @@ def main():
                         help="Matches the --run_tag used to train the candidate models")
     parser.add_argument("--models_root", default=None,
                         help="Where cnn_train_32x3.py saved models_<target>_<scalo_tag>/ "
-                             "(default: this script's directory)")
+                             "(default: cnn_model/ subdirectory)")
     args = parser.parse_args()
 
     cnn_train_32x3 = _load_module("cnn_train_32x3", CNN_MODEL_DIR / "cnn_train_32x3.py")
 
     img_dir = ROOT / args.img_dir
     scalo_tag = img_dir.name.replace("scalograms_", "")
-    models_root = Path(args.models_root) if args.models_root else ROOT
+    models_root = Path(args.models_root) if args.models_root else CNN_MODEL_DIR
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
