@@ -84,6 +84,24 @@ Why this exists instead of just using cnn_train_32x3.py's --kfold
        has a small documented self-leakage (~1/9, each image contributes
        to its own group mean) that's acceptable for the pre-built training
        directories but not for this CV number.
+     - "cnn": the REAL big ImageNet-pretrained backbone (--arch, same
+       choices as cnn_train_32x3.py: resnet18/resnet50/efficientnet_b0/
+       convnext_tiny/mobilenet_v3_large), added because a 2026-08-12 check
+       found hgb/tiny_cnn do NOT reach the standard-split ceiling
+       ResNet-18/ConvNeXt-Tiny hit for speed (66.7%/40.0% vs the
+       standard-split ResNet-18's 86.7%) and doc (83.3%/66.7% vs 100%) --
+       unlike feed_coarse/roughness, where tiny_cnn ties the big backbones
+       (see cv_summary.csv), so for speed/doc the cheap models understate
+       what's achievable and can't be used to conclude whether the
+       standard-split ceiling is real signal or a lucky split. Reuses
+       cnn_train_32x3.py's build_model/build_transforms/ScalogramDataset/
+       train_epoch verbatim (224x224 resize, ImageNet normalization,
+       weighted CE, cosine LR schedule) -- same FIXED-epoch-count, no
+       test-driven checkpoint selection discipline as tiny_cnn/run_kfold
+       (see that function's "Fixed-epoch-count result" comment). This is
+       the expensive option: 15 fresh ImageNet fine-tunes per --arch per
+       --seed, likely CPU-infeasible for a full sweep -- run on a GPU
+       machine, one target/arch/seed combination at a time.
 
 Grouping: each of End Milling's 15 (DOC, speed) condition groups has exactly
 3 runs. Leaving one group out yields a held-out fold containing 3 whole
@@ -104,6 +122,13 @@ Usage:
     python cv_evaluate_32x3.py --img_dir scalograms_32x3_feedopt_residual --target feed_coarse
     python cv_evaluate_32x3.py --img_dir scalograms_32x3_residual_roughness --target roughness --models hgb tiny_cnn residual_hgb
     python cv_evaluate_32x3.py --img_dir scalograms_32x3 --target speed --models hgb
+
+    # Real-backbone LOCO check for speed/doc (GPU strongly recommended -- 15
+    # fresh ResNet-18 fine-tunes at 50 epochs each; run one target at a time):
+    python cv_evaluate_32x3.py --img_dir scalograms_32x3_speedopt_perdoc --target speed --models cnn --arch resnet18 --epochs 50
+    python cv_evaluate_32x3.py --img_dir scalograms_32x3_docopt_raw3w --target doc --models cnn --arch resnet18 --epochs 50
+    # Sanity-check against the known standard-split ceiling first (single fold, minutes not hours):
+    python cv_evaluate_32x3.py --img_dir scalograms_32x3_speedopt_perdoc --target speed --split standard --models cnn --arch resnet18 --epochs 50
 """
 import argparse
 import importlib.util
@@ -201,6 +226,48 @@ def train_tiny_cnn(train_arrays, train_labels, num_classes, epochs, batch, lr, n
 def predict_tiny_cnn(model, val_tf, arrays, device):
     model.eval()
     ds = NativeScalogramDataset(arrays, [0] * len(arrays), val_tf)
+    dl = DataLoader(ds, batch_size=16, shuffle=False, num_workers=0)
+    probs = []
+    for imgs, _ in dl:
+        probs.extend(torch.softmax(model(imgs.to(device)), dim=1).cpu().numpy())
+    return np.array(probs)
+
+
+# ── real ImageNet-pretrained backbone (resnet18/50, convnext_tiny, etc.) ──────
+def train_backbone_cnn(train_paths, train_labels, num_classes, arch, dropout, epochs, batch, lr,
+                        weight_decay, label_smooth, seed, device, mod):
+    """Fine-tunes one of cnn_train_32x3.py's real backbones (224x224 resize +
+    ImageNet normalization via mod.build_transforms/mod.ScalogramDataset,
+    same architecture factory as the standard-split training that produced
+    the 86.7%/100% speed/doc headline numbers). FIXED epoch count, no
+    test-accuracy-driven checkpoint selection -- mirrors train_tiny_cnn's
+    and run_kfold's anti-leakage discipline exactly; the only difference from
+    those is architecture size and the ImageNet-pretrained starting point."""
+    mod.seed_everything(seed)
+    train_tf, val_tf = mod.build_transforms(noise_std=0.02)
+    train_ds = mod.ScalogramDataset(train_paths, train_labels, train_tf)
+    train_dl = DataLoader(train_ds, batch_size=min(batch, len(train_ds)), shuffle=True,
+                           num_workers=0, drop_last=len(train_ds) > batch)
+
+    model = mod.build_model(arch, num_classes, dropout=dropout).to(device)
+    counts = np.bincount(train_labels, minlength=num_classes).astype(float)
+    counts[counts == 0] = 1.0
+    weights = torch.tensor(1.0 / counts, dtype=torch.float32).to(device)
+    weights = weights / weights.sum()
+    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=label_smooth)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+
+    for _ in range(epochs):
+        mod.train_epoch(model, train_dl, criterion, optimizer, device)
+        scheduler.step()
+    return model, val_tf
+
+
+@torch.no_grad()
+def predict_backbone_cnn(model, val_tf, test_paths, device, mod):
+    model.eval()
+    ds = mod.ScalogramDataset(test_paths, [0] * len(test_paths), val_tf)
     dl = DataLoader(ds, batch_size=16, shuffle=False, num_workers=0)
     probs = []
     for imgs, _ in dl:
@@ -393,7 +460,8 @@ def build_folds(split: str, label_map: dict, condition_of: dict, spec: dict, mod
 
 def run_cv(img_dir: Path, target: str, model_name: str, seed: int, epochs: int, batch: int,
            lr: float, noise_std: float, device, mod, split: str, kfold_k: int = 5,
-           cond_weight: float = 0.7, stack_use_residual: bool = True):
+           cond_weight: float = 0.7, stack_use_residual: bool = True, arch: str = "resnet18",
+           weight_decay: float = 1e-4, label_smooth: float = 0.05, dropout: float = None):
     spec = mod.TARGETS[target]
     label_map = spec["label_map"]
     num_classes = spec["num_classes"]
@@ -408,24 +476,44 @@ def run_cv(img_dir: Path, target: str, model_name: str, seed: int, epochs: int, 
           f"{len(entries)} window images")
 
     all_arrays = {}
+    path_of = {}
     for run, window, p in entries:
-        all_arrays[(run, window)] = np.asarray(Image.open(p).convert("L"), dtype=np.float32)
+        path_of[(run, window)] = p
+        if model_name != "cnn":   # "cnn" reads full-res RGB straight off disk, doesn't need this
+            all_arrays[(run, window)] = np.asarray(Image.open(p).convert("L"), dtype=np.float32)
+
+    cnn_dropout = dropout if dropout is not None else mod.DEFAULT_DROPOUT[target]
 
     all_probs, all_labels, all_runs = [], [], []
-    for train_runs, test_runs in folds:
+    for fold_i, (train_runs, test_runs) in enumerate(folds, 1):
         train_entries = [(r, w) for r, w, _ in entries if r in train_runs]
         test_entries  = [(r, w) for r, w, _ in entries if r in test_runs]
         if not train_entries or not test_entries:
             print(f"  Skipping fold -- empty train or test partition")
             continue
 
-        train_arrays = [all_arrays[e] for e in train_entries]
-        test_arrays  = [all_arrays[e] for e in test_entries]
         train_labels = np.array([label_map[r] for r, w in train_entries])
         test_labels  = np.array([label_map[r] for r, w in test_entries])
         train_conditions = [condition_of[r] for r, w in train_entries]
         test_conditions  = [condition_of[r] for r, w in test_entries]
         test_runs_list = [r for r, w in test_entries]
+
+        if model_name == "cnn":
+            if len(folds) > 1:
+                print(f"  [cnn] fold {fold_i}/{len(folds)}  test_runs={sorted(test_runs)}")
+            train_paths = [path_of[e] for e in train_entries]
+            test_paths  = [path_of[e] for e in test_entries]
+            model, val_tf = train_backbone_cnn(train_paths, train_labels, num_classes, arch,
+                                                cnn_dropout, epochs, batch, lr, weight_decay,
+                                                label_smooth, seed, device, mod)
+            probs = predict_backbone_cnn(model, val_tf, test_paths, device, mod)
+            all_probs.append(probs)
+            all_labels.extend(test_labels.tolist())
+            all_runs.extend(test_runs_list)
+            continue
+
+        train_arrays = [all_arrays[e] for e in train_entries]
+        test_arrays  = [all_arrays[e] for e in test_entries]
 
         if model_name == "hgb":
             probs = predict_hgb(train_arrays, train_labels, test_arrays, seed)
@@ -485,12 +573,24 @@ def main():
                         help="cond_stack only: which pixel model to average with cond_only")
     parser.add_argument("--models", nargs="+", default=["hgb", "tiny_cnn"],
                         choices=["hgb", "tiny_cnn", "residual_hgb", "cond_only",
-                                 "cond_hgb", "cond_residual_hgb", "cond_stack"])
+                                 "cond_hgb", "cond_residual_hgb", "cond_stack", "cnn"])
     parser.add_argument("--seeds", type=int, nargs="+", default=[42])
-    parser.add_argument("--epochs", type=int, default=30, help="tiny_cnn only")
-    parser.add_argument("--batch", type=int, default=8, help="tiny_cnn only")
-    parser.add_argument("--lr", type=float, default=1e-3, help="tiny_cnn only")
+    parser.add_argument("--epochs", type=int, default=30,
+                        help="tiny_cnn/cnn only. The standard-split headline numbers in "
+                             "BEST_MODELS_README.md used 50 epochs -- pass --epochs 50 to match "
+                             "that training recipe exactly when running --models cnn.")
+    parser.add_argument("--batch", type=int, default=8, help="tiny_cnn/cnn only")
+    parser.add_argument("--lr", type=float, default=1e-3, help="tiny_cnn/cnn only")
     parser.add_argument("--noise_std", type=float, default=0.02, help="tiny_cnn only")
+    parser.add_argument("--arch", default="resnet18",
+                        choices=["resnet18", "resnet50", "efficientnet_b0",
+                                 "convnext_tiny", "mobilenet_v3_large"],
+                        help="cnn only -- which cnn_train_32x3.py backbone to fine-tune per fold")
+    parser.add_argument("--weight_decay", type=float, default=1e-4, help="cnn only")
+    parser.add_argument("--label_smooth", type=float, default=0.05, help="cnn only")
+    parser.add_argument("--dropout", type=float, default=None,
+                        help="cnn only. Default: cnn_train_32x3.py's per-target DEFAULT_DROPOUT "
+                             "(matches the recipe used for the standard-split headline numbers)")
     args = parser.parse_args()
 
     img_dir = ROOT / args.img_dir
@@ -506,17 +606,23 @@ def main():
 
     rows = []
     for model_name in args.models:
+        if model_name == "cnn":
+            print(f"  [cnn] arch={args.arch}  epochs={args.epochs}  batch={args.batch}  "
+                  f"lr={args.lr}  -- one fresh fine-tune per fold, this is slow, "
+                  f"see module docstring")
         for seed in args.seeds:
             window_acc, run_hard, run_soft, n_runs = run_cv(
                 img_dir, args.target, model_name, seed, args.epochs, args.batch, args.lr,
                 args.noise_std, device, mod, args.split, args.kfold_k,
                 args.cond_weight, args.stack_pixel_model == "residual_hgb",
+                args.arch, args.weight_decay, args.label_smooth, args.dropout,
             )
             print(f"  {model_name:14s} seed={seed:<4d} window_acc={window_acc:.3f}  "
                   f"run_acc_hard={run_hard:.3f}  run_acc_soft={run_soft:.3f}  "
                   f"(pooled over {n_runs} runs)")
             rows.append({
                 "target": args.target, "img_dir": img_dir.name, "model": model_name,
+                "arch": args.arch if model_name == "cnn" else "",
                 "split": args.split, "seed": seed, "window_acc": round(window_acc, 4),
                 "run_acc_hard": round(run_hard, 4), "run_acc_soft": round(run_soft, 4),
                 "n_runs": n_runs,
@@ -528,13 +634,17 @@ def main():
         prev = pd.read_csv(out_path)
         if "split" not in prev.columns:
             prev["split"] = "loco"   # all pre-existing rows predate --split, were LOCO-only
+        if "arch" not in prev.columns:
+            prev["arch"] = ""        # all pre-existing rows predate --models cnn
         out = pd.concat([prev, out], ignore_index=True)
     out.to_csv(out_path, index=False)
     print(f"\nWrote {len(rows)} rows -> {out_path.name}")
 
     print("\n--- Mean +/- std across seeds ---")
-    for (target, img_name, model, split), g in out.groupby(["target", "img_dir", "model", "split"]):
-        print(f"  {target:<12s} {img_name:<40s} {model:<14s} {split:<10s} n={len(g)}  "
+    group_cols = ["target", "img_dir", "model", "split"] + (["arch"] if "arch" in out.columns else [])
+    for key, g in out.groupby(group_cols):
+        tag = "  ".join(str(k) for k in (key if isinstance(key, tuple) else (key,)))
+        print(f"  {tag:<70s} n={len(g)}  "
               f"window={g['window_acc'].mean():.3f}+/-{g['window_acc'].std():.3f}  "
               f"run_hard={g['run_acc_hard'].mean():.3f}+/-{g['run_acc_hard'].std():.3f}  "
               f"run_soft={g['run_acc_soft'].mean():.3f}+/-{g['run_acc_soft'].std():.3f}")
