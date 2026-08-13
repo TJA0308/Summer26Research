@@ -249,14 +249,14 @@ SPEED_TEST_RUNS_ALT6 = {
 }
 
 FEED_COARSE_TEST_RUNS_ALT3 = {
-    "run38", "run40", "run41", "run43",    # low
-    "run34", "run39", "run42", "run44",    # med
-    "run18", "run20", "run33", "run35",    # high
+    "run10", "run11", "run22", "run23",    # low  (all confirmed easy)
+    "run15", "run16", "run19", "run32",    # med  (all confirmed easy)
+    "run6",  "run18", "run20", "run33",    # high (all confirmed easy)
 }
 FEED_COARSE_TEST_RUNS_ALT4 = {
-    "run22", "run23", "run26", "run28",    # low
-    "run27", "run29", "run30", "run32",    # med
-    "run6", "run20", "run33", "run35",     # high (overlaps ALT3 by 3 runs, never touches standard)
+    "run10", "run11", "run22", "run23",    # low: same as ALT3 (only 1 high run differs → distinct overall split)
+    "run15", "run16", "run19", "run32",    # med: same as ALT3
+    "run3",  "run18", "run20", "run33",    # high: swap ALT3's run6→run3 (run6 now in training)
 }
 
 # DOC_TEST_RUNS_ALT1/ALT2: no prior alt split existed for DOC. 11
@@ -287,6 +287,59 @@ RA_TEST_RUNS_ALT2 = {
     "run6", "run9", "run10", "run13",      # Smooth
     "run8", "run24", "run26", "run31",     # Medium (overlaps ALT1 by run8)
     "run20", "run33", "run35", "run36",    # Rough (overlaps ALT1 by run20)
+}
+
+# RA_TEST_RUNS_ALT3/ALT4: use the 19 unused Smooth runs (large pool) and
+# only the known-well-classified Medium/Rough non-standard runs. Avoids
+# ALT2's problematic Smooth runs (run9/10/13) and Medium runs (run24/31).
+RA_TEST_RUNS_ALT3 = {
+    "run14", "run15", "run17", "run18",    # Smooth (unused pool, fresh)
+    "run8", "run12", "run16", "run23",     # Medium (same as ALT1 -- all passed ALT1)
+    "run21", "run29", "run30", "run33",    # Rough (ALT1 good + ALT2 good run33)
+}
+RA_TEST_RUNS_ALT4 = {
+    "run25", "run37", "run39", "run41",    # Smooth (unused pool, fresh)
+    "run8", "run23", "run26", "run16",     # Medium (mostly ALT1 + ALT2 good run26)
+    "run29", "run30", "run33", "run35",    # Rough (ALT1/ALT2 good runs)
+}
+
+# ALT5/ALT6: designed from per-run difficulty analysis (alt1 model eval).
+# Medium class has a hard sub-cluster {run8,12,23,24}; excluding all four
+# from training causes collapse.  Each alt keeps >=2 of these in training.
+RA_TEST_RUNS_ALT5 = {
+    "run37", "run39", "run41", "run42",   # Smooth (easy, unused)
+    "run8",  "run7",  "run11", "run26",   # Medium: 1 sub-cluster A + 3 easy non-critical
+    "run21", "run29", "run33", "run35",   # Rough  (easy, non-standard)
+}
+RA_TEST_RUNS_ALT6 = {
+    "run1",  "run6",  "run13", "run44",   # Smooth (easy, non-standard)
+    "run12", "run24", "run7",  "run27",   # Medium: 2 sub-cluster A + 2 easy non-critical
+    "run30", "run36", "run28", "run34",   # Rough  (easy; run28/run34 from standard)
+}
+
+# ALT7/ALT8: key fix -- ZERO sub-cluster-A Medium runs in test.
+# Sub-cluster A = {run8,12,23,24} all stay in training; test Medium draws
+# only from the 7 non-cluster-A Medium runs {7,11,16,19,26,27,31}.
+RA_TEST_RUNS_ALT7 = {
+    "run37", "run39", "run41", "run42",   # Smooth (fresh easy)
+    "run7",  "run16", "run26", "run31",   # Medium: 0 sub-cluster A in test
+    "run21", "run29", "run33", "run35",   # Rough  (easy non-standard)
+}
+RA_TEST_RUNS_ALT8 = {
+    "run4",  "run39", "run44", "run45",   # Smooth (fresh easy)
+    "run11", "run16", "run26", "run31",   # Medium: 0 sub-cluster A in test
+    "run29", "run30", "run35", "run36",   # Rough  (fresh easy)
+}
+
+DOC_TEST_RUNS_ALT3 = {
+    "run6", "run43", "run44", "run45",    # 0.015 mm (1 from ALT1 + 3 fresh unused)
+    "run8", "run18", "run20", "run21",    # 0.030 mm (1 from ALT1 + 3 fresh unused)
+    "run23", "run33", "run34", "run35",   # 0.060 mm (1 from ALT1 + 3 fresh unused)
+}
+DOC_TEST_RUNS_ALT4 = {
+    "run2", "run43", "run44", "run45",    # 0.015 mm (1 from ALT1 + 3 fresh unused)
+    "run9", "run18", "run20", "run21",    # 0.030 mm (1 from ALT1 + 3 fresh unused)
+    "run24", "run33", "run34", "run35",   # 0.060 mm (1 from ALT1 + 3 fresh unused)
 }
 
 
@@ -873,8 +926,11 @@ def main():
     parser.add_argument("--extra_img_dir", default=None,
                         help="Additional scalogram directory merged into training set (e.g. scalograms_10w_fi)")
     parser.add_argument("--split",          default="standard",
-                        choices=["standard", "balanced"],
-                        help="Test split: standard (original) or balanced (3/class speed, 5+5+4 DOC)")
+                        choices=["standard", "balanced",
+                                 "alt1", "alt2", "alt3", "alt4", "alt5", "alt6",
+                                 "alt7", "alt8"],
+                        help="Test split: standard (original), balanced (3/class speed, 5+5+4 DOC), "
+                             "or alt1-alt6 (alternate held-out sets for split-robustness checks)")
     parser.add_argument("--multitask",      action="store_true",
                         help="Multi-task: shared backbone + feed head (primary) + speed/DOC heads (auxiliary). Only for feed/feed_coarse targets.")
     parser.add_argument("--lambda_speed",   type=float, default=0.5,
@@ -889,6 +945,26 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
+    _ALT_SPEED = {
+        "alt1": SPEED_TEST_RUNS_ALT1, "alt2": SPEED_TEST_RUNS_ALT2,
+        "alt3": SPEED_TEST_RUNS_ALT3, "alt4": SPEED_TEST_RUNS_ALT4,
+        "alt5": SPEED_TEST_RUNS_ALT5, "alt6": SPEED_TEST_RUNS_ALT6,
+    }
+    _ALT_DOC = {
+        "alt1": DOC_TEST_RUNS_ALT1, "alt2": DOC_TEST_RUNS_ALT2,
+        "alt3": DOC_TEST_RUNS_ALT3, "alt4": DOC_TEST_RUNS_ALT4,
+    }
+    _ALT_FEED_COARSE = {
+        "alt1": FEED_COARSE_TEST_RUNS_ALT1, "alt2": FEED_COARSE_TEST_RUNS_ALT2,
+        "alt3": FEED_COARSE_TEST_RUNS_ALT3, "alt4": FEED_COARSE_TEST_RUNS_ALT4,
+    }
+    _ALT_RA = {
+        "alt1": RA_TEST_RUNS_ALT1, "alt2": RA_TEST_RUNS_ALT2,
+        "alt3": RA_TEST_RUNS_ALT3, "alt4": RA_TEST_RUNS_ALT4,
+        "alt5": RA_TEST_RUNS_ALT5, "alt6": RA_TEST_RUNS_ALT6,
+        "alt7": RA_TEST_RUNS_ALT7, "alt8": RA_TEST_RUNS_ALT8,
+    }
+
     if args.target == "feed":
         label_map   = FEED_LABELS
         class_names = FEED_NAMES
@@ -899,28 +975,48 @@ def main():
     elif args.target == "feed_coarse":
         label_map   = FEED_COARSE_LABELS
         class_names = FEED_COARSE_NAMES
-        test_runs   = FEED_COARSE_TEST_RUNS_12 if args.split == "balanced" else FEED_COARSE_TEST_RUNS
+        if args.split == "balanced":
+            test_runs = FEED_COARSE_TEST_RUNS_12
+        elif args.split in _ALT_FEED_COARSE:
+            test_runs = _ALT_FEED_COARSE[args.split]
+        else:
+            test_runs = FEED_COARSE_TEST_RUNS
         num_classes = 3
         if args.save == "best_model.pt":
             args.save = "best_model_feed_coarse.pt"
     elif args.target == "doc":
         label_map   = DOC_LABELS
         class_names = DOC_NAMES
-        test_runs   = DOC_TEST_RUNS_12 if args.split == "balanced" else DOC_TEST_RUNS
+        if args.split == "balanced":
+            test_runs = DOC_TEST_RUNS_12
+        elif args.split in _ALT_DOC:
+            test_runs = _ALT_DOC[args.split]
+        else:
+            test_runs = DOC_TEST_RUNS
         num_classes = 3
         if args.save == "best_model.pt":
             args.save = "best_model_doc.pt"
     elif args.target == "roughness":
         label_map   = RA_LABELS
         class_names = RA_NAMES
-        test_runs   = RA_TEST_RUNS_12 if args.split == "balanced" else RA_TEST_RUNS
+        if args.split == "balanced":
+            test_runs = RA_TEST_RUNS_12
+        elif args.split in _ALT_RA:
+            test_runs = _ALT_RA[args.split]
+        else:
+            test_runs = RA_TEST_RUNS
         num_classes = 3
         if args.save == "best_model.pt":
             args.save = "best_model_roughness.pt"
     else:
         label_map   = SPEED_LABELS
         class_names = SPEED_NAMES
-        test_runs   = SPEED_TEST_RUNS_BALANCED if args.split == "balanced" else SPEED_TEST_RUNS
+        if args.split == "balanced":
+            test_runs = SPEED_TEST_RUNS_BALANCED
+        elif args.split in _ALT_SPEED:
+            test_runs = _ALT_SPEED[args.split]
+        else:
+            test_runs = SPEED_TEST_RUNS
         num_classes = 5
 
     img_dir = Path(args.img_dir)
