@@ -117,14 +117,17 @@ from cnn_train import (   # noqa: E402  (repo-local import, path set above)
     SPEED_TEST_RUNS_ALT9, SPEED_TEST_RUNS_ALT10, SPEED_TEST_RUNS_ALT11,
     DOC_LABELS, DOC_NAMES, DOC_TEST_RUNS, DOC_TEST_RUNS_12,
     DOC_TEST_RUNS_ALT1, DOC_TEST_RUNS_ALT2, DOC_TEST_RUNS_ALT3, DOC_TEST_RUNS_ALT4,
-    DOC_TEST_RUNS_ALT5, DOC_TEST_RUNS_ALT6,
+    DOC_TEST_RUNS_ALT5, DOC_TEST_RUNS_ALT6, DOC_TEST_RUNS_ALT7, DOC_TEST_RUNS_ALT8, DOC_TEST_RUNS_ALT9,
+    DOC_TEST_RUNS_ALT10, DOC_TEST_RUNS_ALT11, DOC_TEST_RUNS_ALT12,
+    DOC_TEST_RUNS_ALT13, DOC_TEST_RUNS_ALT14,
     FEED_COARSE_LABELS, FEED_COARSE_NAMES, FEED_COARSE_TEST_RUNS, FEED_COARSE_TEST_RUNS_12,
     FEED_COARSE_TEST_RUNS_ALT1, FEED_COARSE_TEST_RUNS_ALT2,
-    FEED_COARSE_TEST_RUNS_ALT3, FEED_COARSE_TEST_RUNS_ALT4,
+    FEED_COARSE_TEST_RUNS_ALT3, FEED_COARSE_TEST_RUNS_ALT4, FEED_COARSE_TEST_RUNS_ALT5,
+    FEED_COARSE_TEST_RUNS_ALT6, FEED_COARSE_TEST_RUNS_ALT7,
     FEED_LABELS, FEED_NAMES, FEED_TEST_RUNS,
     RA_LABELS, RA_NAMES, RA_TEST_RUNS, RA_TEST_RUNS_12,
     RA_TEST_RUNS_ALT1, RA_TEST_RUNS_ALT2, RA_TEST_RUNS_ALT7, RA_TEST_RUNS_ALT8,
-    RA_TEST_RUNS_ALT9, RA_TEST_RUNS_ALT10,
+    RA_TEST_RUNS_ALT9, RA_TEST_RUNS_ALT10, RA_TEST_RUNS_ALT11, RA_TEST_RUNS_ALT12,
     ScalogramDataset, ConditionedScalogramDataset,
     load_split, load_split_conditioned, load_smote_map, load_smote_cond_map,
     stratified_kfold, load_smote_full, smote_for_fold,
@@ -154,6 +157,7 @@ TARGETS = {
         "test_runs_rough_alt1": RA_TEST_RUNS_ALT1, "test_runs_rough_alt2": RA_TEST_RUNS_ALT2,
         "test_runs_rough_alt7": RA_TEST_RUNS_ALT7, "test_runs_rough_alt8": RA_TEST_RUNS_ALT8,
         "test_runs_rough_alt9": RA_TEST_RUNS_ALT9, "test_runs_rough_alt10": RA_TEST_RUNS_ALT10,
+        "test_runs_rough_alt11": RA_TEST_RUNS_ALT11,
         "smote_csv": "smote_speed_labels.csv",
     },
     "doc": {
@@ -163,10 +167,19 @@ TARGETS = {
         "test_runs_alt1": DOC_TEST_RUNS_ALT1, "test_runs_alt2": DOC_TEST_RUNS_ALT2,
         "test_runs_alt3": DOC_TEST_RUNS_ALT3, "test_runs_alt4": DOC_TEST_RUNS_ALT4,
         "test_runs_alt5": DOC_TEST_RUNS_ALT5, "test_runs_alt6": DOC_TEST_RUNS_ALT6,
+        "test_runs_alt7": DOC_TEST_RUNS_ALT7,
+        "test_runs_alt8": DOC_TEST_RUNS_ALT8,
+        "test_runs_alt9": DOC_TEST_RUNS_ALT9,
+        "test_runs_alt10": DOC_TEST_RUNS_ALT10,
+        "test_runs_alt11": DOC_TEST_RUNS_ALT11,
+        "test_runs_alt12": DOC_TEST_RUNS_ALT12,
+        "test_runs_alt13": DOC_TEST_RUNS_ALT13,
+        "test_runs_alt14": DOC_TEST_RUNS_ALT14,
         # See speed's identical "test_runs_rough_alt*" comment above.
         "test_runs_rough_alt1": RA_TEST_RUNS_ALT1, "test_runs_rough_alt2": RA_TEST_RUNS_ALT2,
         "test_runs_rough_alt7": RA_TEST_RUNS_ALT7, "test_runs_rough_alt8": RA_TEST_RUNS_ALT8,
         "test_runs_rough_alt9": RA_TEST_RUNS_ALT9, "test_runs_rough_alt10": RA_TEST_RUNS_ALT10,
+        "test_runs_rough_alt11": RA_TEST_RUNS_ALT11,
         "smote_csv": "smote_doc_labels.csv",
     },
     "feed_coarse": {
@@ -175,6 +188,9 @@ TARGETS = {
         "test_runs_standard": FEED_COARSE_TEST_RUNS, "test_runs_balanced": FEED_COARSE_TEST_RUNS_12,
         "test_runs_alt1": FEED_COARSE_TEST_RUNS_ALT1, "test_runs_alt2": FEED_COARSE_TEST_RUNS_ALT2,
         "test_runs_alt3": FEED_COARSE_TEST_RUNS_ALT3, "test_runs_alt4": FEED_COARSE_TEST_RUNS_ALT4,
+        "test_runs_alt5": FEED_COARSE_TEST_RUNS_ALT5,
+        "test_runs_alt6": FEED_COARSE_TEST_RUNS_ALT6,
+        "test_runs_alt7": FEED_COARSE_TEST_RUNS_ALT7,
         "smote_csv": "smote_feed_coarse_labels.csv",
     },
     "feed": {
@@ -198,6 +214,10 @@ TARGETS = {
         "test_runs_rough_alt9": RA_TEST_RUNS_ALT9,
         "test_runs_alt10": RA_TEST_RUNS_ALT10,
         "test_runs_rough_alt10": RA_TEST_RUNS_ALT10,
+        "test_runs_alt11": RA_TEST_RUNS_ALT11,
+        "test_runs_rough_alt11": RA_TEST_RUNS_ALT11,
+        "test_runs_alt12": RA_TEST_RUNS_ALT12,
+        "test_runs_rough_alt12": RA_TEST_RUNS_ALT12,
         "smote_csv": "smote_roughness_labels.csv",
     },
 }
@@ -677,9 +697,10 @@ def main():
                              "<parent>_pred_<scalo_tag>_<run_tag>.csv for --cascade_predicted")
     parser.add_argument("--split", default="standard",
                         choices=["standard", "balanced", "alt1", "alt2", "alt3", "alt4", "alt5", "alt6",
-                                 "alt7", "alt8", "alt9", "alt10", "alt11",
+                                 "alt7", "alt8", "alt9", "alt10", "alt11", "alt12",
                                  "rough_alt1", "rough_alt2", "rough_alt7", "rough_alt8",
-                                 "rough_alt9", "rough_alt10"],
+                                 "rough_alt9", "rough_alt10", "rough_alt11", "rough_alt12",
+                                 "alt13", "alt14"],
                         help="Which *_TEST_RUNS set from cnn_train.py to use, checked against "
                              "TARGETS[target]['test_runs_<split>'] (SystemExit if undefined for "
                              "this target). alt1/alt2 exist for speed, feed_coarse, doc, and "
@@ -760,6 +781,11 @@ def main():
         "rough_alt8": spec.get("test_runs_rough_alt8"),
         "rough_alt9":  spec.get("test_runs_rough_alt9")  or spec.get("test_runs_alt9"),
         "rough_alt10": spec.get("test_runs_rough_alt10") or spec.get("test_runs_alt10"),
+        "rough_alt11": spec.get("test_runs_rough_alt11") or spec.get("test_runs_alt11"),
+        "rough_alt12": spec.get("test_runs_rough_alt12") or spec.get("test_runs_alt12"),
+        "alt12": spec.get("test_runs_alt12"),
+        "alt13": spec.get("test_runs_alt13"),
+        "alt14": spec.get("test_runs_alt14"),
     }[args.split]
     print(f"Device    : {device}")
     print(f"Target    : {args.target}  ({spec['num_classes']} classes)")

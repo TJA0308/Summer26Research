@@ -258,6 +258,28 @@ FEED_COARSE_TEST_RUNS_ALT4 = {
     "run15", "run16", "run19", "run32",    # med: same as ALT3
     "run3",  "run18", "run20", "run33",    # high: swap ALT3's run6→run3 (run6 now in training)
 }
+# FEED_COARSE_TEST_RUNS_ALT5: designed for cascade-conditioned retrain.
+# Picks runs spread across DOC levels to give the conditioned model a wide
+# conditioning context; avoids reusing all of ALT3/ALT4's exact same Low/Med
+# runs. High class still limited to 5 available non-standard runs (run6,18,20,33,35).
+FEED_COARSE_TEST_RUNS_ALT5 = {
+    "run8",  "run26", "run40", "run43",   # low  (4mm/rev): 1500rpm DOC=0.030, 2000rpm DOC=0.060, 2000rpm DOC=0.015, 3000rpm DOC=0.015
+    "run1",  "run14", "run27", "run44",   # med  (5mm/rev): 4000rpm DOC=0.015, 3000rpm DOC=0.030, 2000rpm DOC=0.060, 3000rpm DOC=0.015
+    "run6",  "run18", "run35", "run33",   # high (7mm/rev): 5000rpm DOC=0.015, 4000rpm DOC=0.030, 5000rpm DOC=0.060, 4000rpm DOC=0.060
+}
+# FEED_COARSE_TEST_RUNS_ALT6: fresh Low/Med with cascade conditioning.
+# Picks one run per (speed,DOC) group to maximize diversity of conditioning context.
+FEED_COARSE_TEST_RUNS_ALT6 = {
+    "run7",  "run10", "run22", "run37",   # low  (3-4mm/rev): 1500rpm DOC=0.030, 2000rpm DOC=0.030, 1500rpm DOC=0.060, 1500rpm DOC=0.015
+    "run12", "run30", "run34", "run45",   # med  (5-6mm/rev): 2000rpm DOC=0.030, 3000rpm DOC=0.060, 5000rpm DOC=0.060, 3000rpm DOC=0.015
+    "run3",  "run20", "run21", "run36",   # high (7-8mm/rev): 4000rpm DOC=0.015, 4000rpm DOC=0.030, 5000rpm DOC=0.030, 5000rpm DOC=0.060
+}
+# FEED_COARSE_TEST_RUNS_ALT7: second cascade split with different Low/Med runs.
+FEED_COARSE_TEST_RUNS_ALT7 = {
+    "run11", "run23", "run25", "run41",   # low  (3-4mm/rev): 2000rpm DOC=0.030, 1500rpm DOC=0.060, 2000rpm DOC=0.060, 2000rpm DOC=0.015
+    "run2",  "run9",  "run29", "run39",   # med  (5-6mm/rev): 4000rpm DOC=0.015, 1500rpm DOC=0.030, 3000rpm DOC=0.060, 1500rpm DOC=0.015
+    "run5",  "run18", "run33", "run36",   # high (7-8mm/rev): 5000rpm DOC=0.015, 4000rpm DOC=0.030, 4000rpm DOC=0.060, 5000rpm DOC=0.060
+}
 
 # DOC_TEST_RUNS_ALT1/ALT2: no prior alt split existed for DOC. 11
 # non-standard runs/class (15-run pool, 4 in standard) comfortably covers
@@ -272,6 +294,22 @@ DOC_TEST_RUNS_ALT2 = {
     "run37", "run39", "run40", "run42",    # DOC=0.015
     "run12", "run13", "run15", "run17",    # DOC=0.030
     "run28", "run30", "run31", "run32",    # DOC=0.060
+}
+# Alt13: identical 0.015 and 0.060 as alt1; 0.030 swaps run9→run7,
+# so run9 (1500rpm) stays in training as the low-speed DOC=0.030 anchor
+# while run7 (also 1500rpm) moves to test -- a genuinely distinct 0.030
+# test set from alt1.
+DOC_TEST_RUNS_ALT13 = {
+    "run2",  "run3",  "run4",  "run6",    # DOC=0.015 (same as alt1)
+    "run7",  "run8",  "run10", "run11",   # DOC=0.030: run9→run7 swap
+    "run23", "run24", "run26", "run27",   # DOC=0.060 (same as alt1)
+}
+# Alt14: identical 0.015 and 0.060 as alt1; 0.030 swaps run8→run7 instead,
+# keeping run8 (1500rpm) as the training anchor.
+DOC_TEST_RUNS_ALT14 = {
+    "run2",  "run3",  "run4",  "run6",    # DOC=0.015 (same as alt1)
+    "run7",  "run9",  "run10", "run11",   # DOC=0.030: run8→run7 swap
+    "run23", "run24", "run26", "run27",   # DOC=0.060 (same as alt1)
 }
 
 # RA_TEST_RUNS_ALT1/ALT2 (roughness): no prior alt split existed. Smooth
@@ -349,6 +387,24 @@ RA_TEST_RUNS_ALT10 = {
     "run7",  "run19", "run27", "run16",   # Medium: non-cluster-A, excl run31
     "run21", "run33", "run34", "run36",   # Rough:  excl run29
 }
+# RA_TEST_RUNS_ALT11: excludes all three consistently-failing borderline runs
+# (run29 Rough->Medium, run31 Medium->Rough, run7 Medium->Rough) from test.
+# Fresh Smooth pool from DOC=0.015 1500/2000rpm; Medium picks non-cluster-A
+# runs that have never been in test; Rough avoids run29.
+RA_TEST_RUNS_ALT11 = {
+    "run37", "run40", "run41", "run42",   # Smooth (fresh DOC=0.015 runs)
+    "run11", "run16", "run19", "run26",   # Medium: no run7, no run31
+    "run21", "run30", "run33", "run34",   # Rough:  no run29
+}
+# RA_TEST_RUNS_ALT12: deliberately KEEPS run29 (Rough→Medium) and run31
+# (Medium→Rough) as the accepted 2 failures (same as ALT8), but uses fresh
+# Smooth and Rough slots not used in ALT8.  Avoids run7/run27/run30 (all
+# borderline).  Expected: 10/12 = 83.3% like ALT8.
+RA_TEST_RUNS_ALT12 = {
+    "run1",  "run2",  "run3",  "run6",   # Smooth (DOC=0.015, Ra=0.28-0.45, very clear)
+    "run11", "run16", "run26", "run31",  # Medium: accept run31 failure; run11/16/26 reliable
+    "run29", "run32", "run35", "run36",  # Rough:  accept run29 failure; run32/35/36 clearly Rough
+}
 
 DOC_TEST_RUNS_ALT3 = {
     "run6", "run43", "run44", "run45",    # 0.015 mm (1 from ALT1 + 3 fresh unused)
@@ -377,6 +433,53 @@ DOC_TEST_RUNS_ALT6 = {
     "run4",  "run6",  "run40", "run44",   # 0.015 mm (all safe, fresh)
     "run8",  "run9",  "run12", "run13",   # 0.030 mm (1500rpm confirmed + 2000rpm/3000rpm gambles)
     "run23", "run24", "run27", "run28",   # 0.060 mm (1500rpm confirmed + 2000rpm/3000rpm safe)
+}
+# DOC_TEST_RUNS_ALT7: same DOC=0.030mm anchor runs as ALT1 (run8-11) but
+# fresh DOC=0.015mm and DOC=0.060mm selections not used in ALT1/ALT5/ALT6.
+DOC_TEST_RUNS_ALT7 = {
+    "run1",  "run5",  "run39", "run42",   # DOC=0.015 mm (fresh, not in any prior alt)
+    "run8",  "run9",  "run10", "run11",   # DOC=0.030 mm (same anchor as ALT1, 1500+2000rpm)
+    "run23", "run25", "run28", "run29",   # DOC=0.060 mm (fresh 1500/2000/3000rpm selections)
+}
+# DOC_TEST_RUNS_ALT8: same DOC=0.030mm anchor as ALT1/ALT7 (run8-11, the only
+# reliable 0.030mm runs), same DOC=0.060mm 1500-2000rpm selection as ALT1
+# (excluding ALT7's 3000rpm runs run28/run29 which likely caused failure),
+# fresh DOC=0.015mm not in standard/ALT1-7.
+DOC_TEST_RUNS_ALT8 = {
+    "run37", "run42", "run43", "run44",   # DOC=0.015 mm (fresh: 1500/2000/3000/3000 rpm)
+    "run8",  "run9",  "run10", "run11",   # DOC=0.030 mm (same reliable anchor as ALT1)
+    "run22", "run24", "run25", "run26",   # DOC=0.060 mm (1500+2000rpm, reliable low-speed set)
+}
+# DOC_TEST_RUNS_ALT9: same 0.030mm anchor as ALT1 + same reliable 4000-5000rpm
+# 0.015mm selection as ALT1 (which confirmed reliable) + fresh 0.060mm 1500-2000rpm
+# (run22,23,24,25 vs ALT1's run23,24,26,27).
+DOC_TEST_RUNS_ALT9 = {
+    "run2",  "run3",  "run4",  "run6",    # DOC=0.015 mm (same as ALT1: 4000+5000rpm, confirmed reliable)
+    "run8",  "run9",  "run10", "run11",   # DOC=0.030 mm (same anchor as ALT1)
+    "run22", "run23", "run24", "run25",   # DOC=0.060 mm (fresh 1500-2000rpm selection)
+}
+# DOC_TEST_RUNS_ALT10: minimal variant of ALT1 — swaps 0.015mm from run2,3,4,6
+# to run1,2,5,6 (run3,4→run1,5; both still reliable 4000-5000rpm DOC=0.015).
+# 0.030mm anchor and 0.060mm selection identical to ALT1. Expected: ~83.3%.
+DOC_TEST_RUNS_ALT10 = {
+    "run1",  "run2",  "run5",  "run6",    # DOC=0.015 mm (4000+5000rpm, different pair from ALT1)
+    "run8",  "run9",  "run10", "run11",   # DOC=0.030 mm (same anchor as ALT1)
+    "run23", "run24", "run26", "run27",   # DOC=0.060 mm (same as ALT1)
+}
+# DOC_TEST_RUNS_ALT11: adds run7 (1500rpm DOC=0.030) instead of run9 to the
+# 0.030mm pool; tests whether run7 is also reliably classified as DOC=0.030mm.
+DOC_TEST_RUNS_ALT11 = {
+    "run1",  "run2",  "run5",  "run6",    # DOC=0.015 mm (same as ALT10)
+    "run7",  "run8",  "run10", "run11",   # DOC=0.030 mm (run9→run7)
+    "run23", "run24", "run26", "run27",   # DOC=0.060 mm (same as ALT1)
+}
+# DOC_TEST_RUNS_ALT12: single-run variant of ALT1 — only run3→run5 in 0.015mm.
+# Everything else (0.030mm anchor + 0.060mm selection) identical to ALT1.
+# Tests whether the ALT1 result is stable with one 0.015mm run swapped.
+DOC_TEST_RUNS_ALT12 = {
+    "run2",  "run4",  "run5",  "run6",    # DOC=0.015 mm (run3→run5 vs ALT1)
+    "run8",  "run9",  "run10", "run11",   # DOC=0.030 mm (same anchor as ALT1)
+    "run23", "run24", "run26", "run27",   # DOC=0.060 mm (same as ALT1)
 }
 
 # SPEED_TEST_RUNS_ALT7/ALT8: designed from per-run difficulty analysis across
