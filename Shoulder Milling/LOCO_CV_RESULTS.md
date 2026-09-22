@@ -23,18 +23,29 @@ construction.
 
 ### Fold structure per target
 
-| Target | Grouping (what is held out) | Folds | Runs/fold | Chance floor |
+| Target | Grouping (what is held out) | Folds | Runs/fold | Chance |
 |--------|----------------------------|-------|-----------|-------------|
 | Speed | depth-of-cut (y × z) | 4 | 6 | 50.0% |
 | Feed | speed × doc (s × y × z) | 8 | 3 | 33.3% |
 | DOC | speed × feed (s × f) | 6 | 4 | 25.0% |
-| Roughness (primary) | doc (y × z) | 4 | 6 | 25.0% |
-| Roughness (secondary)† | speed × feed (s × f) | 6 | 4 | 62.5%† |
+| Roughness (primary) | doc (y × z) | 4 | 6 | 50.0%‡ |
+| Roughness (secondary)† | speed × feed (s × f) | 6 | 4 | 50.0%†‡ |
 
-†Roughness/secondary is shown for reference only — not a valid metric. Because Ra is
-strongly doc-driven, grouping by speed×feed leaves doc fully visible in training,
-and a zero-image doc-lookup alone scores 62.5%. Any roughness LOCO number must be
-compared against 25% (primary grouping), not 50%.
+‡Roughness is a balanced 2-class target (12 smooth / 12 rough of 24 runs), so true
+chance is **50%** for both groupings. For feed/speed/doc, "chance" above is identical
+to this script's zero-image nuisance-lookup floor (verified via `--selftest`) because
+those are designed factors, independent of their LOCO grouping by construction. For
+roughness the two diverge: the primary (doc-out) grouping's nuisance-lookup floor
+measures **25%** — well BELOW the 50% true chance, confirming doc is genuinely held
+out (a clean sanity check, not a lower chance level) — while the secondary grouping's
+is **62.5%**, ABOVE true chance, meaning doc leaks into training there. All `+Margin`
+figures below are computed against the 50% TRUE chance, never against either floor.
+
+†Roughness/secondary is shown for reference only — not a valid LOCO number on its own.
+Because Ra is strongly doc-driven, grouping by speed×feed leaves doc fully visible in
+training, and a zero-image doc-lookup alone scores 62.5% run accuracy with NO
+vibration signal at all. Never report a secondary-grouping roughness score without
+this 62.5% floor alongside it.
 
 ### Anti-leakage discipline
 - Final-epoch model only — no test-accuracy checkpoint selection
@@ -134,26 +145,26 @@ Margins = percentage points above the chance floor for that target.
 | 32x12_feedopt | 41.7% | +8.4 pp |
 | 32x12_residual_doc | 33.3% | ≈ chance |
 
-### Surface Roughness / Ra (4 classes, chance = 25%, primary grouping only)
+### Surface Roughness / Ra (2 classes, chance = 50% — see §1 footnote; DO NOT use 25%)
 
-| Scalogram | Score | +Margin |
+| Scalogram | Score | +Margin (vs true 50% chance) |
 |-----------|-------|---------|
-| **32x12_feedopt_9win** | **75.0%** | +50.0 pp |
-| 32x12_9win | 70.8% | +45.8 pp |
-| 32x3_feedopt_9win | 70.8% | +45.8 pp |
-| 32x12_feedopt | 62.5% | +37.5 pp |
-| 32x3_9win | 62.5% | +37.5 pp |
-| **32x12** | **57.5%** *(±1.9)* | +32.5 pp |
-| 32x3 | 58.3% | +33.3 pp |
-| 32x3_feedopt | 58.3% | +33.3 pp |
-| 32x3_residual_roughness | 58.3% | +33.3 pp |
-| 32x12_residual_speed | 54.2% | +29.2 pp |
-| 32x3_residual_speed | 54.2% | +29.2 pp |
-| 32x3_residual_doc | 50.0% | +25.0 pp |
-| 32x12_residual_doc | 45.8% | +20.8 pp |
-| 32x3_feedopt_residual | 45.8% | +20.8 pp |
-| 32x12_feedopt_residual | 37.5% | +12.5 pp |
-| 32x12_residual_roughness | 29.2% | +4.2 pp (≈ chance — expected) |
+| **32x12_feedopt_9win** | **75.0%** | +25.0 pp |
+| 32x12_9win | 70.8% | +20.8 pp |
+| 32x3_feedopt_9win | 70.8% | +20.8 pp |
+| 32x12_feedopt | 62.5% | +12.5 pp |
+| 32x3_9win | 62.5% | +12.5 pp |
+| **32x12** | **57.5%** *(±1.9)* | +7.5 pp |
+| 32x3 | 58.3% | +8.3 pp |
+| 32x3_feedopt | 58.3% | +8.3 pp |
+| 32x3_residual_roughness | 58.3% | +8.3 pp |
+| 32x12_residual_speed | 54.2% | +4.2 pp |
+| 32x3_residual_speed | 54.2% | +4.2 pp |
+| 32x3_residual_doc | 50.0% | ≈ chance |
+| 32x12_residual_doc | 45.8% | -4.2 pp |
+| 32x3_feedopt_residual | 45.8% | -4.2 pp |
+| 32x12_feedopt_residual | 37.5% | -12.5 pp |
+| 32x12_residual_roughness | 29.2% | -20.8 pp (BELOW chance — expected: this variant has the Ra-predictive component residualized out by design, see §2) |
 
 ---
 
@@ -247,7 +258,7 @@ to chance (25–29%). **Use lr = 1e-3.**
 | **Speed** | 32x12_9win (or residual_speed) | 100.0% | 50% | +50.0 pp |
 | **DOC** | 32x12_residual_doc | 95.8% | 25% | +70.8 pp |
 | **Feed** | 32x3_residual_roughness | 87.5% | 33.3% | +54.2 pp |
-| **Roughness** | 32x12_feedopt_9win | 75.0% | 25% | +50.0 pp |
+| **Roughness** | 32x12_feedopt_9win | 75.0% | 50% | +25.0 pp |
 
 Full commands (lr=1e-3, seed 42):
 
