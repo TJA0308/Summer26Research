@@ -426,6 +426,8 @@ def run_cv(img_dir: Path, target: str, model_name: str, seed: int, split: str, g
            epochs: int, batch: int, lr: float, noise_std: float, weight_decay: float,
            label_smooth: float, dropout: float, arch: str, device):
     df = pd.read_csv(img_dir / "labels.csv")
+    if "run_id" not in df.columns and "run" in df.columns:
+        df = df.rename(columns={"run": "run_id"})
     spec = TARGETS[target]
     num_classes = spec["num_classes"]
     df["label"] = df.apply(lambda r: label_for(target, int(r["side"]), r["feed"], r.get("ra")), axis=1)
@@ -529,15 +531,21 @@ def main():
 
     img_dir = ROOT / args.img_dir
     device  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    def _load_labels(p):
+        d = pd.read_csv(p)
+        if "run_id" not in d.columns and "run" in d.columns:
+            d = d.rename(columns={"run": "run_id"})
+        return d
+
     n_folds = 1 if args.split == "standard" else len(build_loco_folds(
-        pd.read_csv(img_dir / "labels.csv"), args.target, group_variant))
+        _load_labels(img_dir / "labels.csv"), args.target, group_variant))
     print(f"Device: {device}   Scalogram: {img_dir.name}   Target: {args.target}   "
           f"Split: {args.split}{'' if args.split == 'standard' else f' (group={group_variant})'}   "
           f"{n_folds} fold(s)")
 
     if args.target == "roughness" and args.split == "loco":
         nf_correct, nf_total = nuisance_lookup_baseline(
-            pd.read_csv(img_dir / "labels.csv"), "roughness", group_variant)
+            _load_labels(img_dir / "labels.csv"), "roughness", group_variant)
         print(f"  Nuisance-lookup floor for this grouping ({group_variant}): "
               f"{nf_correct}/{nf_total} = {nf_correct/nf_total:.3f} -- "
               f"{'compare LOCO numbers to THIS, not 50% chance' if group_variant == 'secondary' else 'below-chance sanity check, doc is genuinely held out'}")
@@ -568,6 +576,7 @@ def main():
                 "run_acc_soft_ci_hi": round(ci_hi, 4), "run_acc_hard": round(run_hard, 4),
                 "mean_final_train_acc": round(mean_train_acc, 4) if mean_train_acc is not None else "",
                 "n_runs": n_runs,
+                "lr": args.lr,
             })
 
     out = pd.DataFrame(rows)
