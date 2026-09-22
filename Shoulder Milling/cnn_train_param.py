@@ -625,6 +625,14 @@ def main():
     tag = f"{args.arch}_lr{args.lr:g}"
     if args.run_tag:
         tag += f"_{args.run_tag}"
+    # NOTE: best_acc/best_epoch below are DIAGNOSTIC ONLY (logged to history.json
+    # so overfitting/peak-epoch can be inspected after the fact). They are never
+    # used to select which checkpoint gets loaded or reported -- doing that would
+    # be test-accuracy-driven checkpoint selection, exactly the leakage mechanism
+    # that produced the now-debunked 87.5% feed number (see
+    # residual_preprocessing_readme.md). The reported headline is always the
+    # FINAL-epoch model, matching End Milling's cnn_train_32x3.py and this
+    # project's own cv_evaluate.py discipline.
     best_acc, best_epoch, history = 0.0, 0, []
 
     print(f"\n{'Ep':>4}  {'TrLoss':>8}  {'TrAcc':>7}  {'TeLoss':>8}  {'TeAcc':>7}  {'TeF1':>6}")
@@ -636,9 +644,8 @@ def main():
         te_f1 = f1_score(te_lbls, te_preds, average="macro", zero_division=0)
         scheduler.step()
 
-        if te_acc > best_acc:
+        if te_acc > best_acc:   # diagnostic tracking only -- NOT used for checkpoint selection
             best_acc, best_epoch = te_acc, epoch
-            torch.save(model.state_dict(), out_dir / f"{tag}_best.pt")
 
         history.append({
             "epoch": epoch, "tr_loss": round(tr_loss, 4), "tr_acc": round(tr_acc, 4),
@@ -646,7 +653,9 @@ def main():
         })
         print(f"{epoch:>4}  {tr_loss:>8.4f}  {tr_acc:>7.3f}  {te_loss:>8.4f}  {te_acc:>7.3f}  {te_f1:>6.3f}")
 
-    model.load_state_dict(torch.load(out_dir / f"{tag}_best.pt", map_location=device))
+    # Save and report the FINAL-epoch model only -- no test-accuracy-driven selection.
+    torch.save(model.state_dict(), out_dir / f"{tag}_final.pt")
+    final_window_acc = history[-1]["te_acc"]
     if conditioned:
         run_acc, vote_preds, vote_true = majority_vote_accuracy_cond(
             model, te_paths, te_labels, te_runs, te_conds, val_tf, device
@@ -656,10 +665,12 @@ def main():
             model, te_paths, te_labels, te_runs, val_tf, device
         )
 
-    print(f"\nBest window-level test acc : {best_acc:.3f}  (epoch {best_epoch})")
+    print(f"\nFinal-epoch window-level test acc : {final_window_acc:.3f}  (epoch {args.epochs})")
+    print(f"(diagnostic only, NOT used for selection) best window-level test acc "
+          f"seen during training: {best_acc:.3f}  (epoch {best_epoch})")
     print(f"Run-level majority vote acc: {run_acc:.3f}  "
           f"({int(round(run_acc * len(set(te_runs))))}/{len(set(te_runs))} runs)")
-    print(f"\nPer-class report (run-level, best model):")
+    print(f"\nPer-class report (run-level, final-epoch model):")
     print(classification_report(vote_true, vote_preds, target_names=spec["class_names"], zero_division=0))
 
     hist_path = out_dir / f"{tag}_history.json"
@@ -670,7 +681,8 @@ def main():
             "dropout": dropout, "label_smooth": args.label_smooth, "noise_std": args.noise_std,
             "run_tag": args.run_tag, "conditioned": conditioned, "cond_parents": cond_parents,
             "split_id": args.split_id,
-            "best_window_acc": round(best_acc, 4), "best_epoch": best_epoch,
+            "final_window_acc": round(final_window_acc, 4),
+            "best_window_acc_DIAGNOSTIC_ONLY": round(best_acc, 4), "best_epoch_DIAGNOSTIC_ONLY": best_epoch,
             "run_level_acc": round(run_acc, 4), "history": history,
         }, f, indent=2)
     print(f"\nHistory saved to {hist_path}")
