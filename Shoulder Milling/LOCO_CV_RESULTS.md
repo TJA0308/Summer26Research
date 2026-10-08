@@ -62,11 +62,11 @@ All scalograms are CWT (continuous wavelet transform) images of vibration signal
 
 | Technique | Description |
 |-----------|-------------|
-| **32x12** | 32 CWT scale rows × 12 time columns, 3 windows/run |
-| **32x3** | 32 scale rows × 3 time columns, 3 windows/run (narrower window) |
-| **9win** | 9 temporal windows/run instead of 3 — 3× more images per run |
-| **feedopt** | CWT scale rows selected by F-statistic on feed separability (fit once on all data*) |
-| **feedopt_9win** | feedopt scale selection + 9-window temporal splitting |
+| **32x12** | 32 CWT scale rows × 12 time columns, 3 windows/run; rows selected by Spearman \|rho\| with Ra (same routine, `target="ra"`) |
+| **32x3** | 32 scale rows × 3 time columns, 3 windows/run (narrower window); rows selected by Spearman \|rho\| with Ra |
+| **9win** | Each of the 3 windows/run is cut into 3 contiguous scale-row bands (rows split along the 32-scale axis), giving 9 sub-images/run that share the parent window's label. This is a post-generation split, not re-windowing in time (`split_scalogram_windows.py`, docstring lines 1-14; `np.array_split(img, 3, axis=0)` at line 50) |
+| **feedopt** | 32 CWT scale rows selected by Spearman \|rho\| between run-level mean CWT row (mexican, coif; averaged) and ordinal feed (3/5/7), fit once on all 24 runs* (`select_cwt_rows(target="feed")`, `build_option_c_scalograms.py:114-150`; not an F-statistic) |
+| **feedopt_9win** | feedopt scale selection + 3-way scale-band split (9 sub-images/run) |
 | **feedopt_residual** | feedopt scalograms with feed-predictive component residualized out* |
 | **residual_doc** | CWT with doc-predictive component residualized out* |
 | **residual_roughness** | CWT with Ra-predictive component residualized out* |
@@ -172,6 +172,11 @@ Margins = percentage points above the chance floor for that target.
 
 *(all results now complete)*
 
+**Provenance (confirmed):** all 48 cells were matched by `find_missing_runs.py`. lr=1e-3 = the first
+seed-42 loco row per (target, group, scalogram); lr=1e-4 = the explicit lr=1e-4 row for 12 cells, or the
+second (blank-`lr`) seed-42 row for the other 36 cells. The only missing run is
+roughness/secondary/`32x12_feedopt_9win` at lr=1e-3 (queued as gpu_jobs batch A).
+
 ### Speed
 
 | Scalogram | lr=1e-3 | lr=1e-4 | Winner |
@@ -242,8 +247,12 @@ Margins = percentage points above the chance floor for that target.
 
 ### Verdict
 
-**lr = 1e-3 wins in 40/42 comparable cases** (all results complete).
-The two 1e-4 wins are minor (+4 pp and +20.8 pp on `residual_roughness` roughness — both absolute scores are still low, near chance).
+**lr = 1e-3 wins 44/48 comparisons, 2 are ties, 2 go to lr = 1e-4** (all results complete;
+per target: speed 12/12, DOC 12/12, feed 11/12 + 1 tie, roughness 9/12 + 1 tie + 2 for 1e-4).
+Ties: `32x12_residual_doc` (feed, 33.3% vs 33.3%) and `32x3_feedopt_residual` (roughness, 45.8% vs 45.8%).
+The two 1e-4 wins are both roughness: `32x12_feedopt_residual` (+4.2 pp, within noise) and
+`32x12_residual_roughness` (+20.8 pp, against a 1e-3 score of 29.2%, which is itself below the 50% chance level;
+the 1e-4 score of 50.0% is exactly chance, so this is not a real 1e-4 advantage).
 Across all targets, lr=1e-4 shows severe degradation on doc (most variants drop to
 chance = 25%) and large drops on speed (most fall 20–50 pp). All four lr=1e-4 9win
 feed results land at or near chance (25–42%), and all four 9win doc results collapse
@@ -288,8 +297,7 @@ python cv_evaluate.py --img_dir scalograms_32x12_feedopt_9win --target roughness
 (≥75%), and three variants reach 100%. The signal is encoded across all CWT
 representations.
 
-**9-window variants outperform 3-window for roughness and DOC.** More temporal context
-consistently helps the harder targets. `feedopt_9win` (CWT scale selection +
+**9win variants outperform non-9win for roughness and DOC.** Splitting into scale bands (more, narrower-bandwidth samples per run) helps the harder targets. `feedopt_9win` (CWT scale selection +
 9 windows) is the best roughness representation.
 
 **Residual variants are informative diagnostics:**
@@ -328,3 +336,43 @@ for DOC, where lr=1e-4 consistently degrades to chance (25%).
 
 4. **ResNet-18 only** — used exclusively based on prior architecture sweep results
    showing it as the most consistent performer across targets.
+
+5. **Residualized variants may be transductive (confirmed against code).** In
+   `build_residual_scalograms.py` the residual group is (doc, feed) for speed, (speed, feed) for
+   doc, and side (= speed x doc) for feed and roughness. Each of these groups lies entirely within
+   one LOCO fold's held-out set (speed folds by doc, DOC folds by speed x feed, feed folds by
+   speed x doc, roughness folds by doc), so every test image is centred on a mean computed from
+   test-fold images only (the script's own docstring acknowledges only the 1/N self-contribution).
+   The 100% `residual_speed` and 95.8% `residual_doc` scores may therefore be optimistic and should
+   not be read as clean generalization numbers.
+
+6. **CWT row selection used all 24 runs for every selected dir.** The base 32x12 / 32x3 dirs select
+   rows by Spearman correlation with Ra over all 24 runs (`scalogram_readme.md` Option C; `select_cwt_rows`
+   in `build_option_c_scalograms.py`), and the feedopt dirs use the same routine with feed as target
+   (Spearman rank correlation, as section 2 now states). Residual and 9win
+   dirs inherit this. Only `scalograms_64x2_full` is expected to be unselected; I did not verify that
+   dir's builder.
+
+7. **Best-of-16 winner's curse.** The per-target "best" configurations in section 5 are the argmax
+   over 16 variants of a single seed-42 run; the selected score is upward-biased and the baseline
+   seed std (up to +/-9.3 pp) is comparable to many gaps between variants.
+
+---
+
+## 8. Pre-registration (written before multi-seed runs)
+
+**Status: PROPOSED - pending user approval.**
+
+Final configuration per target, chosen by seed-42 argmax (lr = 1e-3):
+
+| Target | Config | Seed-42 score | Note |
+|--------|--------|---------------|------|
+| Speed | 32x12_9win | 100.0% | Ties with residual_speed (100%); pre-registered tie-break = simplest preprocessing, which excludes the possibly transductive residual (caveat 5) |
+| DOC | 32x12_residual_doc | 95.8% | Residualized; see caveat 5 |
+| Feed | 32x3_residual_roughness | 87.5% | |
+| Roughness | 32x12_feedopt_9win | 75.0% | |
+
+Headline metric: mean +/- std of run_acc_soft over seeds 43-46 only (seed 42 is the selection
+seed and is excluded from the headline), with a pooled exact Clopper-Pearson 95% CI over runs
+pooled across those seeds. The 32x12 baseline is reported alongside for every target, with the
+split each number comes from stated explicitly.

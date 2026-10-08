@@ -1,0 +1,5 @@
+$ErrorActionPreference = "Stop"
+& "$PSScriptRoot/00_repro_check.ps1"
+& "$PSScriptRoot/A_missing_lr1e-4.ps1"
+& "$PSScriptRoot/B_multiseed.ps1"
+& "$PSScriptRoot/C_nested_preproc.ps1"
